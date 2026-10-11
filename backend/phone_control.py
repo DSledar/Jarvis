@@ -135,6 +135,63 @@ def unlock_phone(pin: str = "", device_serial: str = "") -> dict[str, Any]:
         return {"ok": False, "method": "companion_web", "error": str(exc)}
 
 
+def send_phone_key(key: str, device_serial: str = "") -> dict[str, Any]:
+    """Sends navigation or hardware key command to phone via ADB or Companion Web."""
+    key = str(key).strip().lower()
+    key_map = {
+        "home": "3",
+        "back": "4",
+        "power": "26",
+        "wake": "224",
+        "volup": "24",
+        "volume_up": "24",
+        "voldown": "25",
+        "volume_down": "25",
+        "menu": "187",
+        "apps": "187",
+        "enter": "66",
+    }
+
+    adb = find_adb()
+    adb_devs = get_adb_devices() if adb else []
+
+    if adb and adb_devs:
+        target = device_serial or adb_devs[0]["serial"]
+        cmd_prefix = [adb, "-s", target] if target else [adb]
+        try:
+            if key in ("swipe_up", "swipe"):
+                subprocess.run([*cmd_prefix, "shell", "input", "swipe", "500", "1600", "500", "400", "300"],
+                               capture_output=True, timeout=5)
+                return {"ok": True, "method": "adb", "message": "Dispatched swipe-up gesture via ADB"}
+            elif key in key_map:
+                code = key_map[key]
+                subprocess.run([*cmd_prefix, "shell", "input", "keyevent", code],
+                               capture_output=True, timeout=5)
+                return {"ok": True, "method": "adb", "message": f"Sent keyevent {code} ({key}) via ADB"}
+            else:
+                return {"ok": False, "error": f"Unknown key event: {key}"}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+    # Fallback to companion web event
+    from . import devices
+    devices.queue_phone_event("phone_action", {"key": key, "timestamp": time.time()})
+    return {"ok": True, "method": "companion_web", "message": f"Queued {key} action to connected phone companion."}
+
+
+def request_phone_screenshot() -> dict[str, Any]:
+    """Triggers phone screenshot capture via ADB or requests companion upload."""
+    adb = find_adb()
+    adb_devs = get_adb_devices() if adb else []
+    if adb and adb_devs:
+        path = capture_phone_screenshot()
+        if path:
+            return {"ok": True, "path": path, "method": "adb", "message": "Captured ADB screenshot."}
+    from . import devices
+    devices.queue_phone_event("snap_photo", {"timestamp": time.time(), "message": "JARVIS requested camera/screen capture."})
+    return {"ok": True, "method": "companion_web", "message": "Requested capture from connected phone companion."}
+
+
 def capture_phone_screenshot() -> str:
     """Takes a screenshot of the connected phone via ADB or retrieves latest upload."""
     adb = find_adb()

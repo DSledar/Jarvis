@@ -671,6 +671,46 @@ async def phone_screen_upload_api(request: Request) -> dict:
     return {"ok": False, "error": "No image payload"}
 
 
+@app.get("/api/phone/overview")
+async def phone_overview_api() -> dict:
+    adb_devs = phone_control.get_adb_devices()
+    connected = devices.get_connected_phones()
+    path = phone_control.capture_phone_screenshot()
+    has_shot = bool(path and Path(path).is_file())
+    local_ip = devices.get_local_ip()
+    return {
+        "ok": True,
+        "connected_phones": connected,
+        "adb_devices": adb_devs,
+        "torch_state": phone_control.get_phone_torch_state(),
+        "has_screenshot": has_shot,
+        "screenshot_url": f"/api/phone/screenshot?t={int(time.time())}" if has_shot else "",
+        "local_ip": local_ip,
+        "portal_url": f"http://{local_ip}:8000/phone",
+    }
+
+
+@app.post("/api/phone/key")
+async def phone_key_api(payload: dict) -> dict:
+    key = str(payload.get("key", "")).strip().lower()
+    serial = str(payload.get("serial", "")).strip()
+    return await asyncio.to_thread(phone_control.send_phone_key, key, serial)
+
+
+@app.get("/api/phone/screenshot")
+async def phone_screenshot_view() -> Response:
+    path = await asyncio.to_thread(phone_control.capture_phone_screenshot)
+    if path and Path(path).is_file():
+        return Response(content=Path(path).read_bytes(), media_type="image/png",
+                        headers={"Cache-Control": "no-cache, no-store, must-revalidate"})
+    raise HTTPException(status_code=404, detail="No screenshot available")
+
+
+@app.post("/api/phone/capture_request")
+async def phone_capture_request_api() -> dict:
+    return await asyncio.to_thread(phone_control.request_phone_screenshot)
+
+
 # ----------------------------------------------------------------------------- remote tunnel API
 @app.get("/api/remote/status")
 async def remote_status_api() -> dict:

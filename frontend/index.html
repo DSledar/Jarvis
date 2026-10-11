@@ -23,7 +23,8 @@
       <button class="nav-btn" data-view="agents"><svg class="ic"><use href="#i-bolt"/></svg>Agents and tools</button>
       <button class="nav-btn" data-view="memory"><svg class="ic"><use href="#i-chip"/></svg>Memory</button>
       <button class="nav-btn" data-view="media"><svg class="ic"><use href="#i-note"/></svg>Media</button>
-      <button class="nav-btn" data-view="devices"><svg class="ic"><use href="#i-phone"/></svg>Nearby & Phone<span class="badge hidden" id="phoneBadge">0</span></button>
+      <button class="nav-btn" data-view="phone-control"><svg class="ic"><use href="#i-phone"/></svg>Phone Control<span class="badge hidden" id="phoneControlBadge">0</span></button>
+      <button class="nav-btn" data-view="devices"><svg class="ic"><use href="#i-phone"/></svg>Nearby & Network<span class="badge hidden" id="phoneBadge">0</span></button>
       <button class="nav-btn" data-view="security"><svg class="ic"><use href="#i-shield"/></svg>Security<span class="badge hidden" id="pendingBadge">0</span></button>
     </nav>
 
@@ -210,6 +211,135 @@
             <h3>YouTube</h3>
             <form class="inline-form" id="youtubeForm"><input id="youtubeInput" placeholder="What do you want to watch?" /><button class="primary" type="submit" data-mode="play">Play</button><button class="ghost" type="button" id="youtubeSearchBtn">Results</button></form>
             <button class="ghost wide" id="openYoutube">Open YouTube</button>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- phone control & open phone ---------- -->
+    <section class="view" id="view-phone-control">
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <h2>📱 Phone Control & Open Phone</h2>
+            <p>Control, unlock, and wake your phone directly from your laptop. View live screen captures, trigger navigation keys, toggle the flashlight, vibrate, speak aloud, and sync data.</p>
+          </div>
+          <div class="page-actions">
+            <button class="ghost" id="btnRefreshPhoneCtrl">🔄 Refresh Status</button>
+            <button class="primary" id="btnQuickWakePhone">⚡ Wake Phone Screen</button>
+          </div>
+        </div>
+
+        <div class="media-grid">
+          <!-- Card 1: Connected Phone & Battery Status -->
+          <section class="panel">
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">Device Link Status</h3>
+              <span id="phoneLinkBadge" class="tunnel-status-badge stopped">● Disconnected</span>
+            </div>
+            <div id="phoneStatusDetails" style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="muted">Connected Model:</span>
+                <b id="phoneModelName" style="color:var(--cyan);">Scanning...</b>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="muted">IP / Connection:</span>
+                <code id="phoneIpAddress" style="color:var(--amber);">--</code>
+              </div>
+              <div>
+                <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+                  <span class="muted">Battery Level:</span>
+                  <b id="phoneBatteryText">--%</b>
+                </div>
+                <div style="height:10px; background:#04121a; border:1px solid var(--line); border-radius:5px; overflow:hidden;">
+                  <div id="phoneBatteryBar" style="height:100%; width:0%; background:var(--green); transition:width 0.3s;"></div>
+                </div>
+              </div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span class="muted">ADB USB/TCP:</span>
+                <span id="phoneAdbStatus" class="muted">Checking ADB...</span>
+              </div>
+            </div>
+
+            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line-soft);">
+              <span class="muted" style="font-size:13px;">Companion Web Portal:</span>
+              <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
+                <a id="phoneCtrlPortalLink" href="/phone" target="_blank" style="flex:1; padding:8px 10px; background:#04121a; border:1px solid var(--cyan-dim); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">http://.../phone</a>
+                <button class="ghost mini" id="btnCopyCtrlPortalLink" type="button">Copy</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Card 2: Open & Unlock Phone -->
+          <section class="panel">
+            <h3>🔓 Open & Unlock Phone</h3>
+            <p class="muted">Send unlock PIN/passcode to wake phone screen, dismiss lockscreen swipe, and activate companion wake-lock:</p>
+            <form class="inline-form" id="phoneUnlockForm" style="margin-top:10px;">
+              <input id="phoneUnlockPin" type="password" placeholder="Phone PIN or passcode (e.g. 1234)" autocomplete="off" />
+              <button class="primary" type="submit">Unlock Phone</button>
+            </form>
+            
+            <h4 style="margin:16px 0 8px; font-size:14.5px; color:var(--cyan);">Quick Phone Keys & Gestures</h4>
+            <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px;">
+              <button class="ghost" id="btnPhoneKeyWake" data-key="wake" type="button">⏻ Wake Screen</button>
+              <button class="ghost" id="btnPhoneKeySwipe" data-key="swipe_up" type="button">⬆️ Swipe Up</button>
+              <button class="ghost" id="btnPhoneKeyHome" data-key="home" type="button">🏠 Home</button>
+              <button class="ghost" id="btnPhoneKeyBack" data-key="back" type="button">◀️ Back</button>
+              <button class="ghost" id="btnPhoneKeyApps" data-key="menu" type="button">📑 Apps</button>
+              <button class="ghost" id="btnPhoneKeyPower" data-key="power" type="button">🔒 Lock/Power</button>
+              <button class="ghost" id="btnPhoneKeyVolUp" data-key="volup" type="button">🔊 Vol +</button>
+              <button class="ghost" id="btnPhoneKeyVolDown" data-key="voldown" type="button">🔉 Vol -</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="media-grid" style="margin-top:16px;">
+          <!-- Card 3: Live Phone Screen Viewer -->
+          <section class="panel">
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">📸 Phone Screen & Mirroring</h3>
+              <div style="display:flex; gap:8px; align-items:center;">
+                <label style="font-size:12.5px; display:flex; align-items:center; gap:5px; cursor:pointer;" class="muted">
+                  <input type="checkbox" id="chkAutoRefreshPhoneScreen" style="width:auto; margin:0;" /> Auto-refresh
+                </label>
+                <button class="ghost mini" id="btnCapturePhoneScreen" type="button">📸 Capture Now</button>
+              </div>
+            </div>
+            <p class="muted" style="margin-top:4px;">View latest screen capture or camera snapshot taken from your phone:</p>
+
+            <div class="phone-screen-viewport" id="phoneScreenViewport" style="margin-top:12px; height:320px; background:#020b10; border:1px solid var(--line); border-radius:6px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+              <img id="phoneScreenImg" src="" alt="Phone screen" style="max-height:100%; max-width:100%; object-fit:contain; display:none;" />
+              <div id="phoneScreenPlaceholder" style="text-align:center; padding:20px; color:var(--muted);">
+                <div style="font-size:36px; margin-bottom:8px;">📱</div>
+                <b>No screenshot captured yet</b>
+                <p style="font-size:13px; margin:6px 0 12px;">Click "Capture Now" or connect via ADB / Companion web to inspect your phone screen.</p>
+                <button class="primary mini" id="btnRequestScreenFromPhone" type="button">Take Screen Capture</button>
+              </div>
+            </div>
+          </section>
+
+          <!-- Card 4: Hardware Remote Actions & Voice Broadcast -->
+          <section class="panel">
+            <h3>⚡ Phone Hardware Remote Actions</h3>
+            <p class="muted">Trigger physical features on your connected phone:</p>
+            <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 16px;">
+              <button class="primary" id="btnCtrlPhoneTorch" type="button">🔦 Flashlight (Off)</button>
+              <button class="ghost" id="btnCtrlPhoneVibrate" type="button">📳 Vibrate Phone</button>
+              <button class="ghost" id="btnCtrlPhoneRing" type="button">🚨 Ring Phone Alarm</button>
+              <button class="ghost" id="btnCtrlPhonePhoto" type="button">📷 Request Camera Photo</button>
+            </div>
+
+            <h4 style="margin:16px 0 8px; font-size:14.5px; color:var(--cyan);">📢 Speak Aloud on Phone (TTS)</h4>
+            <form class="inline-form" id="phoneCtrlSpeakForm">
+              <input id="phoneCtrlSpeakInput" type="text" placeholder="Type text to speak through phone speakers..." />
+              <button class="primary" type="submit">Broadcast Voice</button>
+            </form>
+
+            <h4 style="margin:16px 0 8px; font-size:14.5px; color:var(--cyan);">📋 Clipboard & Push Alert</h4>
+            <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px;">
+              <button class="ghost" id="btnCtrlSendClipboard" type="button">📋 Send PC Clipboard to Phone</button>
+              <button class="ghost" id="btnCtrlSendAlert" type="button">🔔 Send Push Notification</button>
+            </div>
           </section>
         </div>
       </div>

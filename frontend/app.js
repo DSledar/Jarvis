@@ -267,6 +267,7 @@ const loaders = {
   agents: () => loadTools(),
   memory: () => loadFacts(),
   history: () => loadHistorySessions(),
+  'phone-control': () => loadPhoneControl(),
   devices: () => { loadDevices(); refreshTunnelStatus(); loadWolInfo(); },
   security: () => renderPending()
 };
@@ -588,6 +589,244 @@ $('#sendNotifyPhoneBtn')?.addEventListener('click', async () => {
     toast('Sent test notification to phone!');
   } catch (e) {
     toast(e.message, true);
+  }
+});
+
+/* ------------------------------------------------------------------ Dedicated Phone Control & Open Phone */
+let phoneScreenRefreshTimer = null;
+
+async function loadPhoneControl() {
+  try {
+    const data = await api('/api/phone/overview');
+    const connected = data.connected_phones || [];
+    const isConnected = connected.length > 0;
+
+    // Status Badge
+    const badge = $('#phoneLinkBadge');
+    if (badge) {
+      badge.className = 'tunnel-status-badge ' + (isConnected ? 'active' : 'stopped');
+      badge.textContent = isConnected ? `● Connected (${connected.length})` : '● Disconnected';
+    }
+
+    // Nav Badge
+    const ctrlBadge = $('#phoneControlBadge');
+    if (ctrlBadge) {
+      ctrlBadge.textContent = connected.length;
+      ctrlBadge.classList.toggle('hidden', !connected.length);
+    }
+    const devBadge = $('#phoneBadge');
+    if (devBadge) {
+      devBadge.textContent = connected.length;
+      devBadge.classList.toggle('hidden', !connected.length);
+    }
+
+    // Phone Info Details
+    const primary = connected[0] || {};
+    if ($('#phoneModelName')) $('#phoneModelName').textContent = primary.device_name || (isConnected ? 'Connected Phone' : 'No Phone Connected');
+    if ($('#phoneIpAddress')) $('#phoneIpAddress').textContent = primary.ip || (isConnected ? 'Wi-Fi' : '--');
+
+    const bat = primary.battery !== undefined && primary.battery !== null ? primary.battery : '--';
+    if ($('#phoneBatteryText')) $('#phoneBatteryText').textContent = bat !== '--' ? `${bat}%` : '--%';
+    const batBar = $('#phoneBatteryBar');
+    if (batBar) {
+      if (bat !== '--') {
+        const pct = Math.max(0, Math.min(100, bat));
+        batBar.style.width = pct + '%';
+        batBar.style.background = pct > 40 ? 'var(--green)' : pct > 15 ? 'var(--amber)' : 'var(--red)';
+      } else {
+        batBar.style.width = '0%';
+      }
+    }
+
+    // ADB Status
+    const adbList = data.adb_devices || [];
+    const adbEl = $('#phoneAdbStatus');
+    if (adbEl) {
+      if (adbList.length > 0) {
+        adbEl.innerHTML = `<span style="color:var(--green)">✓ ADB Attached (${adbList[0].serial})</span>`;
+      } else {
+        adbEl.innerHTML = `<span class="muted">No USB/TCP ADB (Using Wi-Fi Link)</span>`;
+      }
+    }
+
+    // Companion Link
+    const linkEl = $('#phoneCtrlPortalLink');
+    if (linkEl && data.portal_url) {
+      linkEl.href = data.portal_url;
+      linkEl.textContent = data.portal_url;
+    }
+
+    // Torch button state
+    const torchBtn = $('#btnCtrlPhoneTorch');
+    if (torchBtn) {
+      const on = Boolean(data.torch_state);
+      torchBtn.textContent = on ? '🔦 Flashlight (ON)' : '🔦 Flashlight (Off)';
+      torchBtn.classList.toggle('primary', on);
+    }
+
+    // Screenshot viewport
+    const imgEl = $('#phoneScreenImg');
+    const placeEl = $('#phoneScreenPlaceholder');
+    if (data.has_screenshot && data.screenshot_url) {
+      if (imgEl) {
+        imgEl.src = data.screenshot_url;
+        imgEl.style.display = 'block';
+      }
+      if (placeEl) placeEl.style.display = 'none';
+    } else {
+      if (imgEl) imgEl.style.display = 'none';
+      if (placeEl) placeEl.style.display = 'block';
+    }
+  } catch (err) {
+    console.warn('loadPhoneControl error:', err);
+  }
+}
+
+// Phone Control Event Listeners
+$('#btnRefreshPhoneCtrl')?.addEventListener('click', () => {
+  loadPhoneControl();
+  toast('Refreshed phone status.');
+});
+
+$('#btnQuickWakePhone')?.addEventListener('click', async () => {
+  try {
+    const res = await api('/api/phone/key', { key: 'wake' });
+    toast(res.message || 'Sent wake signal to phone!');
+  } catch (e) {
+    toast('Wake error: ' + e.message, true);
+  }
+});
+
+$('#phoneUnlockForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const pin = $('#phoneUnlockPin')?.value.trim();
+  try {
+    const res = await api('/api/phone/unlock', { pin });
+    if (res.ok) {
+      toast(res.message || 'Phone unlocked successfully!');
+      $('#phoneUnlockPin').value = '';
+      setTimeout(loadPhoneControl, 800);
+    } else {
+      toast('Unlock failed: ' + (res.error || 'Check connection'), true);
+    }
+  } catch (err) {
+    toast('Unlock error: ' + err.message, true);
+  }
+});
+
+// Navigation key pad buttons
+$$('#view-phone-control [data-key]').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    const key = btn.dataset.key;
+    try {
+      const res = await api('/api/phone/key', { key });
+      toast(res.message || `Sent ${key} to phone`);
+    } catch (e) {
+      toast(`Key error (${key}): ${e.message}`, true);
+    }
+  });
+});
+
+// Auto-refresh screen toggle
+$('#chkAutoRefreshPhoneScreen')?.addEventListener('change', (e) => {
+  if (e.target.checked) {
+    if (phoneScreenRefreshTimer) clearInterval(phoneScreenRefreshTimer);
+    phoneScreenRefreshTimer = setInterval(loadPhoneControl, 2500);
+    toast('Screen auto-refresh enabled (every 2.5s)');
+  } else {
+    if (phoneScreenRefreshTimer) clearInterval(phoneScreenRefreshTimer);
+    phoneScreenRefreshTimer = null;
+    toast('Screen auto-refresh disabled');
+  }
+});
+
+// Capture phone screen buttons
+const requestPhoneScreen = async () => {
+  try {
+    const res = await api('/api/phone/capture_request');
+    toast(res.message || 'Dispatched screen capture request');
+    setTimeout(loadPhoneControl, 1200);
+  } catch (e) {
+    toast('Capture error: ' + e.message, true);
+  }
+};
+$('#btnCapturePhoneScreen')?.addEventListener('click', requestPhoneScreen);
+$('#btnRequestScreenFromPhone')?.addEventListener('click', requestPhoneScreen);
+
+// Flashlight toggle
+$('#btnCtrlPhoneTorch')?.addEventListener('click', async () => {
+  try {
+    const res = await api('/api/phone/flashlight', {});
+    const on = Boolean(res.state);
+    const btn = $('#btnCtrlPhoneTorch');
+    if (btn) {
+      btn.textContent = on ? '🔦 Flashlight (ON)' : '🔦 Flashlight (Off)';
+      btn.classList.toggle('primary', on);
+    }
+    toast(`Phone flashlight turned ${on ? 'ON' : 'OFF'}!`);
+  } catch (e) {
+    toast('Flashlight error: ' + e.message, true);
+  }
+});
+
+// Vibration
+$('#btnCtrlPhoneVibrate')?.addEventListener('click', async () => {
+  try {
+    await api('/api/phone/vibrate', { duration: 600 });
+    toast('Vibration dispatched to phone!');
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+// Ring Alarm
+$('#btnCtrlPhoneRing')?.addEventListener('click', ringPhone);
+
+// Photo request
+$('#btnCtrlPhonePhoto')?.addEventListener('click', async () => {
+  try {
+    await api('/api/phone/photo_request', {});
+    toast('Requested photo snapshot from phone camera.');
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+// Speak on phone (TTS)
+$('#phoneCtrlSpeakForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = $('#phoneCtrlSpeakInput')?.value.trim();
+  if (!text) return toast('Type text to speak on phone first.', true);
+  try {
+    await api('/api/phone/speak', { text });
+    $('#phoneCtrlSpeakInput').value = '';
+    toast(`Broadcasting to phone: "${text}"`);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+// Clipboard and Alerts
+$('#btnCtrlSendClipboard')?.addEventListener('click', () => {
+  runTool('sync_clipboard_with_phone', { direction: 'to_phone' }, 'Clipboard to phone');
+});
+$('#btnCtrlSendAlert')?.addEventListener('click', async () => {
+  try {
+    await api('/api/devices/send', {
+      title: 'JARVIS Notification',
+      message: 'Hello from your laptop! All systems synchronized.'
+    });
+    toast('Sent push notification to connected phone!');
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+$('#btnCopyCtrlPortalLink')?.addEventListener('click', () => {
+  const url = $('#phoneCtrlPortalLink')?.href;
+  if (url) {
+    navigator.clipboard?.writeText(url);
+    toast('Copied companion URL to clipboard!');
   }
 });
 

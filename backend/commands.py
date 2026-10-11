@@ -90,7 +90,7 @@ def _norm(text: str) -> str:
 
 
 def _lang(text: str) -> str:
-    if re.search(r"[ۆەێڕکگھ]|[ڤ]", text):  # Sorani-specific letters
+    if re.search(r"[ۆەێڕڵکگھڤ]|(?:بکەرەوە|بکەوە|دابخە|لێبدە|دەنگ|سوپاس|سڵاو|چۆنی|چۆنیت|گیان|تکایە|ئەمڕۆ|کاتژمێر|سەعات|پەنجەرە|مۆبایل|خەو|قوفڵ)", text):
         return "ku"
     if re.search(r"[؀-ۿ]", text):
         return "ar"
@@ -98,10 +98,10 @@ def _lang(text: str) -> str:
 
 
 PHR = {  # short spoken replies in 3 languages
-    "opening": {"en": "Opening {x}.", "ar": "جاري فتح {x}.", "ku": "{x} دەکرێتەوە."},
-    "done": {"en": "Done.", "ar": "تم.", "ku": "تەواو."},
-    "hello": {"en": "Hello Sir. What can I do for you?", "ar": "أهلاً سيدي. كيف أخدمك؟", "ku": "سڵاو گیان. چۆن یارمەتیت بدەم؟"},
-    "thanks": {"en": "Anytime, Sir.", "ar": "على الرحب والسعة.", "ku": "هیچ کێشەیەک نییە."},
+    "opening": {"en": "Opening {x}.", "ar": "جاري فتح {x}.", "ku": "دەستبەجێ {x} دەکرێتەوە."},
+    "done": {"en": "Done.", "ar": "تم.", "ku": "تەواو کرا."},
+    "hello": {"en": "Hello Sir. What can I do for you?", "ar": "أهلاً سيدي. كيف أخدمك؟", "ku": "سڵاو گەورەم. چۆن دەتوانم یارمەتیت بدەم؟"},
+    "thanks": {"en": "Anytime, Sir.", "ar": "على الرحب والسعة.", "ku": "شایەنی نییە، لە خزمەتتام."},
 }
 
 
@@ -150,73 +150,73 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
 
     # ---- greetings / thanks / help
     if text in {"hi", "hello", "hey", "hey jarvis", "hi jarvis", "hello jarvis", "good morning", "good evening", "good afternoon",
-                "jarvis", "yo", "سلام", "مرحبا", "اهلا", "أهلا", "هلا", "سڵاو", "سلاو", "چۆنی", "کەیفت چۆنە"}:
+                "jarvis", "yo", "سلام", "مرحبا", "اهلا", "أهلا", "هلا", "سڵاو", "سلاو", "چۆنی", "چۆنیت", "باشی", "کەیفت چۆنە", "چۆنی گیان", "سڵاو لە تۆ", "بەیانیت باش", "ئێوارەت باش"}:
         return Plan(say=lambda r: _t("hello", lang), name="greet")
-    if re.fullmatch(r"(thanks|thank you|thx|ty|شكرا|شكراً|سوپاس|سپاس|مشكور)( jarvis)?", text):
+    if re.fullmatch(r"(thanks|thank you|thx|ty|شكرا|شكراً|سوپاس|سووپاس|دەستت خۆش|دەستخۆش|زۆر سوپاس|سپاس|مشكور)( jarvis| جارڤیس)?", text):
         return Plan(say=lambda r: _t("thanks", lang), name="thanks")
-    if re.fullmatch(r"(help|what can you do|what do you do|commands)", text):
-        return Plan(say=lambda r: "I can open apps, control windows (minimize/maximize), run Python code, access your phone, play media, and perform multiple tasks.", name="help")
+    if re.fullmatch(r"(help|what can you do|what do you do|commands|یارمەتی|چی دەتوانی بکەی)", text):
+        return Plan(say=lambda r: "دەتوانم بەرنامەکان بکەمەوە، کۆنترۆڵی پەنجەرەکان بکەم، کۆد بنووسم، پەیوەندی بە مۆبایلەکەتەوە بکەم، و کارەکان بەخێرایی ئەنجام بدەم." if lang == "ku" else "I can open apps, control windows (minimize/maximize), run Python code, access your phone, play media, and perform multiple tasks.", name="help")
 
     # ---- time / date
-    if re.search(r"\b(what('?s| is)? the time|time now|what time)\b|^time$|كم الساعة|کاتژمێر", text):
+    if re.search(r"\b(what('?s| is)? the time|time now|what time)\b|^time$|كم الساعة|کاتژمێر|سەعات|سەعات چەندە|کاتژمێر چەندە", text):
         return Plan(steps=[("get_time", {})], say=lambda r: r[0], name="time")
-    if re.search(r"\b(what('?s| is)? (the )?(date|day)|today'?s date)\b|^date$", text):
+    if re.search(r"\b(what('?s| is)? (the )?(date|day)|today'?s date)\b|^date$|ئەمڕۆ چەندە|بەروار|ئەمڕۆ چ ڕۆژێکە", text):
         return Plan(say=lambda r: datetime.datetime.now().strftime("Today is %A, %d %B %Y."), name="date")
 
     # ---- media keys & volume
-    if re.fullmatch(r"(pause|resume|pause (the )?(music|song|video)|stop (the )?(music|song)|play pause|continue|ايقاف مؤقت|وقف|ڕایبگرە)", text):
-        return Plan(steps=[("media_control", {"action": "play_pause"})], say=_result_say(lambda: "Done."), name="playpause")
-    if re.fullmatch(r"(next|next song|next track|skip|skip song|skip this|التالي|الاغنية التالية|دواتر)", text):
-        return Plan(steps=[("media_control", {"action": "next"})], say=_result_say(lambda: "Next track."), name="next")
-    if re.fullmatch(r"(previous|previous song|previous track|prev|go back song|back|السابق|پێشوو)", text):
-        return Plan(steps=[("media_control", {"action": "previous"})], say=_result_say(lambda: "Previous track."), name="prev")
-    if re.search(r"\b(volume up|louder|turn it up|increase volume|raise volume|turn up)\b|ارفع الصوت|دەنگ زیاد", text):
+    if re.fullmatch(r"(pause|resume|pause (the )?(music|song|video)|stop (the )?(music|song)|play pause|continue|ايقاف مؤقت|وقف|ڕایبگرە|بوەستێنە|ڕاگرتن)", text):
+        return Plan(steps=[("media_control", {"action": "play_pause"})], say=_result_say(lambda: "تەواو، ڕاگیرا." if lang == "ku" else "Done."), name="playpause")
+    if re.fullmatch(r"(next|next song|next track|skip|skip song|skip this|التالي|الاغنية التالية|دواتر|گۆرانی دواتر|دواتری لێبدە)", text):
+        return Plan(steps=[("media_control", {"action": "next"})], say=_result_say(lambda: "گۆرانی دواتر." if lang == "ku" else "Next track."), name="next")
+    if re.fullmatch(r"(previous|previous song|previous track|prev|go back song|back|السابق|پێشوو|گۆرانی پێشوو)", text):
+        return Plan(steps=[("media_control", {"action": "previous"})], say=_result_say(lambda: "گۆرانی پێشوو." if lang == "ku" else "Previous track."), name="prev")
+    if re.search(r"\b(volume up|louder|turn it up|increase volume|raise volume|turn up)\b|ارفع الصوت|دەنگ زیاد|دەنگ بەرز|دەنگ زۆر|دەنگی بەرز|دەنگەکە بەرز بکەوە", text):
         n = 15 if re.search(r"\b(a lot|max|much|full)\b", text) else 6
-        return Plan(steps=[("media_control", {"action": "volume_up", "times": n})], say=_result_say(lambda: "Volume up."), name="volup")
-    if re.search(r"\b(volume down|quieter|lower|turn it down|decrease volume|turn down|softer)\b|اخفض الصوت|دەنگ کەم", text):
+        return Plan(steps=[("media_control", {"action": "volume_up", "times": n})], say=_result_say(lambda: "دەنگ بەرز کرایەوە." if lang == "ku" else "Volume up."), name="volup")
+    if re.search(r"\b(volume down|quieter|lower|turn it down|decrease volume|turn down|softer)\b|اخفض الصوت|دەنگ کەم|دەنگ نزم|دەنگ هێواش|دەنگەکە کەم بکەوە", text):
         n = 15 if re.search(r"\b(a lot|much|full)\b", text) else 6
-        return Plan(steps=[("media_control", {"action": "volume_down", "times": n})], say=_result_say(lambda: "Volume down."), name="voldown")
-    if re.search(r"\b(mute|unmute|silence)\b|كتم|بێدەنگ", text):
-        return Plan(steps=[("media_control", {"action": "mute"})], say=_result_say(lambda: "Done."), name="mute")
+        return Plan(steps=[("media_control", {"action": "volume_down", "times": n})], say=_result_say(lambda: "دەنگ کەم کرایەوە." if lang == "ku" else "Volume down."), name="voldown")
+    if re.search(r"\b(mute|unmute|silence)\b|كتم|بێدەنگ|دەنگ ببڕە|بێدەنگی بکە", text):
+        return Plan(steps=[("media_control", {"action": "mute"})], say=_result_say(lambda: "بێدەنگ کرا." if lang == "ku" else "Done."), name="mute")
 
     # ---- window management (minimize, maximize / full size, restore, close)
-    m = re.match(r"^(?:please )?(?:minimi[sz]e|صغر|تصغير|بچووک بکەوە)(?:\s+(?:the\s+)?(?:window|screen|نافذة))?(?:\s+(.+))?$", text)
+    m = re.match(r"^(?:please )?(?:minimi[sz]e|صغر|تصغير|بچووک بکەوە|پەنجەرە بچووک بکەوە|بچووکی بکەوە)(?:\s+(?:the\s+)?(?:window|screen|نافذة|پەنجەرە))?(?:\s+(.+))?$", text)
     if m:
         target = (m.group(1) or "").strip()
-        if target in ("this", "it", "current", "screen", "active"):
+        if target in ("this", "it", "current", "screen", "active", "پەنجەرە", "ئەمە"):
             target = ""
         return Plan(steps=[("minimize_window", {"title": target})],
-                    say=_result_say(lambda: f"Minimised {target or 'active window'}."), name="minimize_window")
-    m = re.match(r"^(?:please )?(?:maximi[sz]e|full\s*size|fullscreen|كبر|تكبير|ملء الشاشة|گەورە بکەوە)(?:\s+(?:the\s+)?(?:window|screen|نافذة))?(?:\s+(.+))?$", text) \
+                    say=_result_say(lambda: f"پەنجەرەی {target or 'دیاریکراو'} بچووک کرایەوە." if lang == "ku" else f"Minimised {target or 'active window'}."), name="minimize_window")
+    m = re.match(r"^(?:please )?(?:maximi[sz]e|full\s*size|fullscreen|كبر|تكبير|ملء الشاشة|گەورە بکەوە|پەنجەرە گەورە بکەوە|گەورەی بکە|پڕ بە شاشە)(?:\s+(?:the\s+)?(?:window|screen|نافذة|پەنجەرە))?(?:\s+(.+))?$", text) \
         or re.match(r"^(?:please )?(?:make (?:it |this )?(?:full\s*size|fullscreen))$", text)
     if m:
         target = (m.group(1) or "").strip() if m.groups() and m.group(1) else ""
-        if target in ("this", "it", "current", "screen", "active", "full size", "fullscreen"):
+        if target in ("this", "it", "current", "screen", "active", "full size", "fullscreen", "پەنجەرە"):
             target = ""
         return Plan(steps=[("maximize_window", {"title": target})],
-                    say=_result_say(lambda: f"Maximized {target or 'active window'} to full size."), name="maximize_window")
-    m = re.match(r"^(?:please )?(?:restore|رجّع|استعادة)(?:\s+(?:the\s+)?(?:window|نافذة))?(?:\s+(.+))?$", text)
+                    say=_result_say(lambda: f"پەنجەرەی {target or 'دیاریکراو'} پڕ بە شاشە گەورە کرایەوە." if lang == "ku" else f"Maximized {target or 'active window'} to full size."), name="maximize_window")
+    m = re.match(r"^(?:please )?(?:restore|رجّع|استعادة|گەڕاندنەوە)(?:\s+(?:the\s+)?(?:window|نافذة|پەنجەرە))?(?:\s+(.+))?$", text)
     if m:
         target = (m.group(1) or "").strip()
         return Plan(steps=[("restore_window", {"title": target})],
                     say=_result_say(lambda: f"Restored {target or 'window'} to normal size."), name="restore_window")
-    m = re.match(r"^(?:please )?(?:close|اغلق|دابخە)\s+(?:the\s+)?(?:window|this window|نافذة)(?:\s+(.+))?$", text)
+    m = re.match(r"^(?:please )?(?:close|اغلق|دابخە|پەنجەرە دابخە|دایبخە)\s+(?:the\s+)?(?:window|this window|نافذة|پەنجەرە)(?:\s+(.+))?$", text)
     if m:
         target = (m.group(1) or "").strip()
         return Plan(steps=[("close_window", {"title": target})],
-                    say=_result_say(lambda: f"Closed {target or 'window'}."), name="close_window")
+                    say=_result_say(lambda: f"پەنجەرەی {target or 'دیاریکراو'} داخرا." if lang == "ku" else f"Closed {target or 'window'}."), name="close_window")
 
     # ---- phone & nearby devices
-    if re.search(r"\b(?:turn on|switch on|enable|open)\s+(?:the\s+)?(?:phone\s+)?(?:flash\s*light|torch)\b|\b(?:flash\s*light|torch)\s+on\b|شغل الفلاش|ضوء الهاتف", text):
+    if re.search(r"\b(?:turn on|switch on|enable|open)\s+(?:the\s+)?(?:phone\s+)?(?:flash\s*light|torch)\b|\b(?:flash\s*light|torch)\s+on\b|شغل الفلاش|ضوء الهاتف|فلاش پێبکە|فلاش دابگیرسێنە|فلاشی مۆبایل پێبکە|فلاش لێبدە|لایت پێبکە", text):
         return Plan(steps=[("toggle_phone_flashlight", {"on": True})],
-                    say=_result_say(lambda: "Turned on your phone's flashlight."), name="torch_on")
-    if re.search(r"\b(?:turn off|switch off|disable|close)\s+(?:the\s+)?(?:phone\s+)?(?:flash\s*light|torch)\b|\b(?:flash\s*light|torch)\s+off\b|اطفئ الفلاش|إطفاء الفلاش", text):
+                    say=_result_say(lambda: "فلاشی مۆبایلەکەت داگیرسا." if lang == "ku" else "Turned on your phone's flashlight."), name="torch_on")
+    if re.search(r"\b(?:turn off|switch off|disable|close)\s+(?:the\s+)?(?:phone\s+)?(?:flash\s*light|torch)\b|\b(?:flash\s*light|torch)\s+off\b|اطفئ الفلاش|إطفاء الفلاش|فلاش بکوژێنەوە|فلاش بکوژینەوە|فلاشی مۆبایل بکوژێنەوە|لایت بکوژێنەوە", text):
         return Plan(steps=[("toggle_phone_flashlight", {"on": False})],
-                    say=_result_say(lambda: "Turned off your phone's flashlight."), name="torch_off")
-    if re.search(r"\b(?:vibrate|buzz)\s+(?:my\s+)?phone\b|هز الهاتف|لەرزین", text):
+                    say=_result_say(lambda: "فلاشی مۆبایلەکەت کوژایەوە." if lang == "ku" else "Turned off your phone's flashlight."), name="torch_off")
+    if re.search(r"\b(?:vibrate|buzz)\s+(?:my\s+)?phone\b|هز الهاتف|لەرزین|مۆبایل بلەرزێنە|لەرزین بۆ مۆبایل|هەزی مۆبایل", text):
         return Plan(steps=[("vibrate_phone", {"duration_ms": 600})],
-                    say=_result_say(lambda: "Vibrating your phone."), name="vibrate_phone")
-    if re.search(r"\b(?:scan network|scan wifi|find all devices|see all devices|scan local network)\b|فحص الشبكة", text):
+                    say=_result_say(lambda: "مۆبایلەکەت لەرزی." if lang == "ku" else "Vibrating your phone."), name="vibrate_phone")
+    if re.search(r"\b(?:scan network|scan wifi|find all devices|see all devices|scan local network)\b|فحص الشبكة|فەحسی نێتۆڕک بکە|ئامێرەکان بدۆزەوە|ئامێرەکانی نێتۆڕک", text):
         return Plan(steps=[("scan_network_devices", {"force": True})],
                     say=lambda r: r[0], name="scan_network")
 
@@ -224,28 +224,31 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
     if m:
         pin = (m.group(1) or "").strip()
         return Plan(steps=[("unlock_phone", {"pin": pin})],
-                    say=_result_say(lambda: f"Unlocking phone{' with PIN' if pin else ''}."), name="unlock_phone")
-    if re.search(r"\b(wake pc|wake my pc|turn on my pc|wake on lan|wol)\b", text):
+                    say=_result_say(lambda: f"مۆبایلەکە کرایەوە{' بە PIN' if pin else ''}." if lang == "ku" else f"Unlocking phone{' with PIN' if pin else ''}."), name="unlock_phone")
+    if re.search(r"\b(wake pc|wake my pc|turn on my pc|wake on lan|wol)\b|شغل الكمبيوتر|کۆمپیوتەر پێبکە|کۆمپیوتەر هەڵسێنە|کۆمپیوتەر وەخەبەر بێنە", text):
         return Plan(steps=[("wake_pc_lan", {})],
-                    say=_result_say(lambda: "Sent Wake-on-LAN packet to PC."), name="wake_pc")
-    if re.search(r"\b(see pc screen|see screen|view screen|look at pc screen|شاهد الشاشة)\b", text):
+                    say=_result_say(lambda: "سیگناڵی هەڵساندنی کۆمپیوتەر نێردرا." if lang == "ku" else "Sent Wake-on-LAN packet to PC."), name="wake_pc")
+    if re.search(r"\b(sleep pc|put pc to sleep|sleep computer)\b|نوم الكمبيوتر|کۆمپیوتەر بخە خەو|خەوتنی کۆمپیوتەر|بیخە خەو", text):
+        return Plan(steps=[("sleep_pc", {}) if "sleep_pc" in tools.TOOLS else ("press_key", {"keys": "sleep"})],
+                    say=_result_say(lambda: "کۆمپیوتەر خرایە دۆخی خەوەوە." if lang == "ku" else "Putting PC to sleep."), name="sleep_pc")
+    if re.search(r"\b(see pc screen|see screen|view screen|look at pc screen|شاهد الشاشة|شاشە ببینە)\b", text):
         return Plan(steps=[("see_pc_screen", {"question": "Describe current desktop screen"})],
                     say=lambda r: r[0], name="see_screen")
-    if re.search(r"\b(see phone screen|view phone screen|mobile screen)\b", text):
+    if re.search(r"\b(see phone screen|view phone screen|mobile screen|شاشەی مۆبایل ببینە)\b", text):
         return Plan(steps=[("see_phone_screen", {"question": "Inspect mobile screen"})],
                     say=lambda r: r[0], name="see_phone_screen")
     if re.search(r"\b(start tunnel|start remote tunnel|remote access|enable tunnel)\b", text):
         return Plan(steps=[("start_remote_tunnel", {"provider": "localhost_run"})],
                     say=lambda r: r[0], name="start_tunnel")
-    if re.search(r"\b(ring|find|locate)\s+(?:my\s+)?phone\b|where('?s| is) my phone|رن على تلفوني|وين تلفوني|زەنگی مۆبایل", text):
-        return Plan(steps=[("ring_phone", {})], say=_result_say(lambda: "Ringing your phone now."), name="ring_phone")
-    if re.search(r"\b(phone status|phone battery|how is my phone)\b|بطارية الهاتف", text):
+    if re.search(r"\b(ring|find|locate)\s+(?:my\s+)?phone\b|where('?s| is) my phone|رن على تلفوني|وين تلفوني|زەنگی مۆبایل|مۆبایلم بدۆزەوە|زەنگ لێبدە بۆ مۆبایلم|مۆبایلەکەم بدۆزەوە|زەنگ لێبدە بۆ تەلەفۆنەکەم", text):
+        return Plan(steps=[("ring_phone", {})], say=_result_say(lambda: "دەستبەجێ زەنگ لە مۆبایلەکەت دەدرێت تا بیدۆزیتەوە." if lang == "ku" else "Ringing your phone now."), name="ring_phone")
+    if re.search(r"\b(phone status|phone battery|how is my phone)\b|بطارية الهاتف|پاتری مۆبایل|مۆبایلم چۆنە", text):
         return Plan(steps=[("get_phone_status", {})], say=lambda r: r[0], name="phone_status")
-    if re.search(r"\b(nearby devices|scan devices|find devices)\b|الأجهزة المجاورة", text):
+    if re.search(r"\b(nearby devices|scan devices|find devices)\b|الأجهزة المجاورة|ئامێرەکان بدۆزەوە", text):
         return Plan(steps=[("list_nearby_devices", {})], say=lambda r: r[0], name="nearby_devices")
-    if re.search(r"\b(sync clipboard|send clipboard to phone|copy to phone)\b", text):
+    if re.search(r"\b(sync clipboard|send clipboard to phone|copy to phone)\b|کلیپبۆرد بۆ مۆبایل", text):
         return Plan(steps=[("sync_clipboard_with_phone", {"direction": "to_phone"})],
-                    say=_result_say(lambda: "Copied PC clipboard to your phone."), name="sync_clipboard")
+                    say=_result_say(lambda: "کلیپبۆرد کۆپی کرا بۆ مۆبایلەکەت." if lang == "ku" else "Copied PC clipboard to your phone."), name="sync_clipboard")
 
     # ---- python execution & math calculation
     m = re.match(r"^(?:run python|python run|eval|exec)\s+(.+)$", raw, flags=re.I | re.S)

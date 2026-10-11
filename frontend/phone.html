@@ -326,8 +326,9 @@
   <!-- Connected Screen -->
   <div id="mainScreen" class="hidden" style="display:flex; flex-direction:column; flex:1;">
     <main>
-      <!-- TAB 1: LIVE SCREEN (Continuous Smooth Stream) -->
-      <div id="tabScreen" class="tab-content">
+      <!-- TAB 1: SCREEN & MOUSE (Unified Live Stream + Touchpad + Keyboard) -->
+      <div id="tabDesktop" class="tab-content">
+        <!-- Live Desktop Video Stream -->
         <section class="panel">
           <div class="panel-head">
             <h3>Live Desktop Stream</h3>
@@ -341,36 +342,11 @@
             <img id="liveScreenStream" class="live-stream-img" alt="Connecting live video feed..." />
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted)">
-            <span>👆 Tap anywhere on the live desktop above to click that spot on your PC!</span>
+            <span>👆 Tap anywhere on the desktop above to click that spot on your PC!</span>
           </div>
         </section>
 
-        <!-- Quick PC Actions under Stream -->
-        <section class="panel">
-          <div class="panel-head"><h3>Quick Controls</h3></div>
-          <div class="grid">
-            <button class="btn-action highlight" data-action="click">
-              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
-              Left Click
-            </button>
-            <button class="btn-action highlight" data-action="right_click">
-              <svg viewBox="0 0 24 24"><path d="M12 3v18M12 3a9 9 0 019 9v0a9 9 0 01-9 9"/></svg>
-              Right Click
-            </button>
-            <button class="btn-action" data-action="minimize">
-              <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/></svg>
-              Minimise Window
-            </button>
-            <button class="btn-action" data-action="maximize">
-              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-              Full Size Window
-            </button>
-          </div>
-        </section>
-      </div>
-
-      <!-- TAB 2: TRACKPAD & KEYBOARD -->
-      <div id="tabTrackpad" class="tab-content hidden">
+        <!-- Precision Touchpad -->
         <section class="panel">
           <div class="panel-head">
             <h3>Precision Touchpad</h3>
@@ -385,6 +361,7 @@
           </div>
         </section>
 
+        <!-- PC Keyboard & Shortcuts -->
         <section class="panel">
           <div class="panel-head"><h3>PC Keyboard & Shortcuts</h3></div>
           <div class="key-bar">
@@ -404,6 +381,29 @@
             <button class="chip" data-key="space">Space</button>
             <button class="chip" data-key="up">▲ Up</button>
             <button class="chip" data-key="down">▼ Down</button>
+          </div>
+        </section>
+
+        <!-- Quick Windows Controls under Touchpad -->
+        <section class="panel">
+          <div class="panel-head"><h3>Windows & Power Controls</h3></div>
+          <div class="grid">
+            <button class="btn-action highlight" data-action="minimize">
+              <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/></svg>
+              Minimise Window
+            </button>
+            <button class="btn-action highlight" data-action="maximize">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Full Size Window
+            </button>
+            <button class="btn-action" data-action="desktop">
+              <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>
+              Show Desktop
+            </button>
+            <button class="btn-action danger" data-action="close">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Close Window
+            </button>
           </div>
         </section>
       </div>
@@ -554,13 +554,9 @@
 
   <!-- Bottom Navigation Bar -->
   <nav class="bottom-nav" id="bottomNav">
-    <button class="nav-item active" data-tab="tabScreen">
+    <button class="nav-item active" data-tab="tabDesktop">
       <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-      <span>Screen</span>
-    </button>
-    <button class="nav-item" data-tab="tabTrackpad">
-      <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="4"/><line x1="12" y1="3" x2="12" y2="9"/><line x1="4" y1="9" x2="20" y2="9"/></svg>
-      <span>Touchpad</span>
+      <span>Screen & Mouse</span>
     </button>
     <button class="nav-item" data-tab="tabTools">
       <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
@@ -615,7 +611,7 @@
         const target = btn.dataset.tab;
         document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
         document.getElementById(target)?.classList.remove('hidden');
-        if (target === 'tabScreen') startLiveScreenStream();
+        if (target === 'tabDesktop') startLiveScreenStream();
       };
     });
 
@@ -831,6 +827,12 @@
         toast('JARVIS: ' + (ev.data.message || 'Screen Wake Activated'));
         enableWakeLock();
         if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+      } else if (ev.type === 'snap_photo') {
+        toast('📸 JARVIS requested camera photo!');
+        document.getElementById('inputPhoto')?.click();
+      } else if (ev.type === 'take_screenshot') {
+        toast('📱 JARVIS requested screen snapshot!');
+        shareMobileScreen();
       } else if (ev.type === 'clipboard' && ev.data.text) {
         navigator.clipboard?.writeText(ev.data.text).catch(() => {});
         toast('Clipboard synced from PC!');
@@ -1010,7 +1012,7 @@
     document.getElementById('btnWakeLock').onclick = enableWakeLock;
 
     // Mobile Screen Sharing
-    document.getElementById('btnShareScreen').onclick = async () => {
+    async function shareMobileScreen() {
       try {
         if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
           return toast('Screen sharing requires browser support or HTTPS tunnel.');
@@ -1040,7 +1042,8 @@
       } catch (err) {
         toast('Could not share screen: ' + err.message);
       }
-    };
+    }
+    document.getElementById('btnShareScreen').onclick = shareMobileScreen;
 
     // Chat
     const chatLog = document.getElementById('chatLog');
