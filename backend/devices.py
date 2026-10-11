@@ -208,8 +208,68 @@ def _infer_device_type(name: str, ua: str) -> str:
     return "Nearby Device"
 
 
+# Common MAC OUI prefixes -> Vendor / Device Type
+_MAC_VENDORS = {
+    "f0:18:98": ("Apple", "iPhone / Apple Device"),
+    "bc:d0:74": ("Apple", "iPhone / Apple Device"),
+    "ac:bc:32": ("Apple", "iPhone / Apple Device"),
+    "60:f4:45": ("Apple", "iPhone / Apple Device"),
+    "e4:58:b8": ("Apple", "iPhone / Apple Device"),
+    "dc:a9:04": ("Apple", "iPhone / Apple Device"),
+    "b8:78:2e": ("Apple", "iPhone / Apple Device"),
+    "a4:83:e7": ("Apple", "iPhone / Apple Device"),
+    "3c:22:fb": ("Apple", "iPhone / Apple Device"),
+    "28:6a:ba": ("Apple", "iPhone / Apple Device"),
+    "9c:20:7b": ("Samsung", "Samsung Galaxy Phone"),
+    "50:01:d9": ("Samsung", "Samsung Galaxy Phone"),
+    "64:1c:ae": ("Samsung", "Samsung Galaxy Phone"),
+    "90:97:f3": ("Samsung", "Samsung Galaxy Phone"),
+    "34:82:c5": ("Xiaomi", "Xiaomi / Redmi Phone"),
+    "50:64:2b": ("Xiaomi", "Xiaomi / Redmi Phone"),
+    "64:a2:00": ("Xiaomi", "Xiaomi / Redmi Phone"),
+    "9c:2a:70": ("Xiaomi", "Xiaomi / Redmi Phone"),
+    "3c:cd:5d": ("Google", "Google Pixel Phone"),
+    "54:60:09": ("Google", "Google Pixel Phone"),
+    "b4:f1:da": ("Huawei", "Huawei Phone / Tablet"),
+    "30:74:96": ("Huawei", "Huawei Phone / Tablet"),
+    "9c:c7:d3": ("Realtek", "PC / Laptop (Wi-Fi)"),
+    "a0:ad:9f": ("Realtek", "PC / Laptop (Ethernet)"),
+    "00:50:56": ("VMware", "Virtual Machine"),
+    "08:00:27": ("Oracle VirtualBox", "Virtual Machine"),
+}
+
+
+def _probe_ip(ip: str) -> None:
+    """Quick port knock / UDP trigger to force the OS to populate its ARP table."""
+    # 1. Send quick UDP datagram (triggers kernel ARP resolution for any online device)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as s:
+            s.settimeout(0.05)
+            s.sendto(b"\x00", (ip, 137))
+    except Exception:
+        pass
+
+    # 2. Quick TCP probe for open web/management ports
+    for port in (80, 443, 8080, 135, 53, 22):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                s.settimeout(0.08)
+                s.connect((ip, port))
+                return
+        except Exception:
+            pass
+
+
+def _sweep_subnet(subnet_base: str) -> None:
+    """Concurrently probes all 254 host IPs on the /24 subnet."""
+    import concurrent.futures
+    ips = [f"{subnet_base}.{i}" for i in range(1, 255)]
+    with concurrent.futures.ThreadPoolExecutor(max_workers=50) as executor:
+        executor.map(_probe_ip, ips)
+
+
 def scan_nearby_devices(force: bool = False) -> list[dict[str, Any]]:
-    """Scan local network (ARP table, ADB, and ping sweep) for nearby devices."""
+    """Scan local network (multi-threaded subnet ARP sweep, ADB, and companion sessions)."""
     global _LAST_SCAN_TIME, _CACHED_DEVICES
     with _SCAN_LOCK:
         if not force and _CACHED_DEVICES and (time.time() - _LAST_SCAN_TIME < 40):
@@ -217,6 +277,15 @@ def scan_nearby_devices(force: bool = False) -> list[dict[str, Any]]:
 
         devices: dict[str, dict[str, Any]] = {}
         my_ip = get_local_ip()
+        ip_parts = my_ip.split(".")
+
+        # Fast concurrent subnet sweep if on IPv4 /24
+        if len(ip_parts) == 4 and ip_parts[0] in ("192", "10", "172"):
+            subnet_base = f"{ip_parts[0]}.{ip_parts[1]}.{ip_parts[2]}"
+            try:
+                _sweep_subnet(subnet_base)
+            except Exception:
+                pass
 
         # 1. Inspect ARP table
         try:
@@ -225,23 +294,32 @@ def scan_nearby_devices(force: bool = False) -> list[dict[str, Any]]:
                 m = re.search(r"(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\s+([0-9a-fA-F-]{17})\s+(\w+)", line)
                 if m:
                     ip, mac, kind = m.group(1), m.group(2).replace("-", ":").lower(), m.group(3)
-                    if ip == my_ip or ip.endswith(".255") or ip.startswith("224.") or ip.startswith("239."):
+                    if ip == my_ip or ip.endswith(".255") or ip.startswith("224.") or ip.startswith("239.") or ip.endswith(".0"):
                         continue
+
                     hostname = ""
                     try:
                         hostname = socket.gethostbyaddr(ip)[0]
                     except Exception:
                         pass
+
+                    # Detect vendor & device type
                     dev_type = "Nearby Device"
-                    if ip.endswith(".1"):
+                    vendor = ""
+                    mac_prefix = ":".join(mac.split(":")[:3])
+                    if mac_prefix in _MAC_VENDORS:
+                        vendor, dev_type = _MAC_VENDORS[mac_prefix]
+                    elif ip.endswith(".1"):
                         dev_type = "Wi-Fi Router / Gateway"
+                        vendor = "Router"
                     elif hostname:
                         dev_type = _infer_device_type(hostname, "")
 
                     devices[ip] = {
                         "ip": ip,
-                        "mac": mac,
-                        "hostname": hostname or f"Device ({ip})",
+                        "mac": mac.upper(),
+                        "hostname": hostname or (f"{vendor} ({ip})" if vendor else f"Device ({ip})"),
+                        "vendor": vendor,
                         "type": dev_type,
                         "status": "online",
                     }
@@ -261,8 +339,9 @@ def scan_nearby_devices(force: bool = False) -> list[dict[str, Any]]:
                             model = p.replace("model:", "")
                     devices[serial] = {
                         "ip": serial,
-                        "mac": "ADB",
+                        "mac": "ADB-USB",
                         "hostname": model,
+                        "vendor": "Android",
                         "type": "Android Phone (USB/ADB)",
                         "status": "connected",
                     }
@@ -276,6 +355,7 @@ def scan_nearby_devices(force: bool = False) -> list[dict[str, Any]]:
                     "ip": s["ip"],
                     "mac": "Wi-Fi Companion",
                     "hostname": s["name"],
+                    "vendor": "Companion",
                     "type": s["type"],
                     "status": "paired & active",
                     "battery": s.get("battery"),
@@ -285,3 +365,22 @@ def scan_nearby_devices(force: bool = False) -> list[dict[str, Any]]:
         _CACHED_DEVICES = result
         _LAST_SCAN_TIME = time.time()
         return result
+
+
+def toggle_phone_flashlight(on: bool) -> dict[str, Any]:
+    """Toggles phone flashlight / torch on all connected phones or via ADB."""
+    from . import phone_control
+    return phone_control.set_phone_torch(on)
+
+
+def vibrate_phones(duration_ms: int = 500) -> dict[str, Any]:
+    """Vibrates connected phones."""
+    from . import phone_control
+    return phone_control.vibrate_phone(duration_ms)
+
+
+def speak_on_phones(text: str) -> dict[str, Any]:
+    """Plays text-to-speech audio on connected phones."""
+    from . import phone_control
+    return phone_control.speak_on_phone(text)
+

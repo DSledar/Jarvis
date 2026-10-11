@@ -50,6 +50,32 @@
 - Full redesign: bigger type, animated orb with listening/thinking/speaking states, six working tabs, real activity feed, approval cards, tool runner.
 - Host-header check blocks DNS-rebinding. Start script no longer blocks when Ollama is missing.
 
+## v4.6.0 — Live Desktop Video Streaming, Phone Flashlight Control, Subnet Discovery & Laptop Sleep Fix
+
+- **Live PC Screen Video Streaming (No Refreshing)**:
+  - Replaced static snapshots with a real-time MJPEG video stream (`/api/phone/screen/stream`) at ~16-18 FPS.
+  - Smooth, continuous desktop feed on mobile companion with zero flickering.
+  - Interactive tap-to-click directly on the video feed with visual ripples and vibration haptics.
+- **Phone Flashlight & Hardware Remote Control**:
+  - Control your phone's camera LED torch directly from your PC dashboard or via voice commands ("turn on flashlight", "turn off flashlight", "شغل الفلاش").
+  - Mobile companion includes a dedicated glowing Flashlight / Torch toggle button using HTML5 `MediaStreamTrack` camera LED constraints with a full-screen white torch fallback.
+  - Remote Phone Console on PC: Vibrate phone, announce spoken text on phone speakers (TTS), and trigger photo snapshots.
+- **Network Subnet Discovery & Device Inspector**:
+  - Multi-threaded concurrent sweep across the local `/24` subnet.
+  - Identifies all connected network devices (phones, tablets, routers, PCs, smart TVs) with IP, MAC, hostname, and vendor OUI recognition.
+  - Live devices table in PC dashboard with 1-click rescan.
+- **Laptop Sleep & Wake-on-LAN (WoWLAN) Overhaul**:
+  - Detected and fixed true hardware physical MAC `9C:C7:D3:36:72:C6` on Realtek 8852BE Wi-Fi (previously blocked by virtual adapter MAC).
+  - Dynamic subnet broadcast computation (`10.202.34.255:9`).
+  - Mobile companion 1-tap Android WoL intent (`wol://9C:C7:D3:36:72:C6`) and 1-tap MAC copy so users can wake their sleeping laptop even when the local server is asleep.
+  - Created `enable_laptop_wol.bat` to disable Windows Fast Startup and configure WoWLAN sleep listening.
+- **Remote HTTPS Tunnel Fix (Image 2 Solution)**:
+  - Switched default reverse SSH tunnel to `localhost.run` with hardened URL regex ignoring docs banners.
+  - Dashboard polling loop ensures the generated HTTPS link (`https://*.lhr.life/phone`) appears immediately in the UI.
+- **App-Like Mobile Companion Redesign (Image 1 Solution)**:
+  - Fixed-bottom navigation bar (🖥️ Screen, 🖱️ Touchpad, 🔦 Tools/Torch, ⚡ Power/WoL, 💬 Chat).
+  - Responsive, glassmorphic UI with full touch feedback, virtual trackpad, keyboard shortcuts, and full-screen controls.
+
 ## v4.5.0 — Supercharged Intelligence, Window Controls, Multi-Tasking & Phone Access
 
 - **Python & Coding Master**: Built-in Python code execution sandbox (`execute_python`), code syntax & structure analyzer (`analyze_code`), and Python standard library inspector (`python_doc`). JARVIS can execute code to solve complex math, process data, test scripts, and figure out hard problems.

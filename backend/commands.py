@@ -207,6 +207,19 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
                     say=_result_say(lambda: f"Closed {target or 'window'}."), name="close_window")
 
     # ---- phone & nearby devices
+    if re.search(r"\b(?:turn on|switch on|enable|open)\s+(?:the\s+)?(?:phone\s+)?(?:flash\s*light|torch)\b|\b(?:flash\s*light|torch)\s+on\b|شغل الفلاش|ضوء الهاتف", text):
+        return Plan(steps=[("toggle_phone_flashlight", {"on": True})],
+                    say=_result_say(lambda: "Turned on your phone's flashlight."), name="torch_on")
+    if re.search(r"\b(?:turn off|switch off|disable|close)\s+(?:the\s+)?(?:phone\s+)?(?:flash\s*light|torch)\b|\b(?:flash\s*light|torch)\s+off\b|اطفئ الفلاش|إطفاء الفلاش", text):
+        return Plan(steps=[("toggle_phone_flashlight", {"on": False})],
+                    say=_result_say(lambda: "Turned off your phone's flashlight."), name="torch_off")
+    if re.search(r"\b(?:vibrate|buzz)\s+(?:my\s+)?phone\b|هز الهاتف|لەرزین", text):
+        return Plan(steps=[("vibrate_phone", {"duration_ms": 600})],
+                    say=_result_say(lambda: "Vibrating your phone."), name="vibrate_phone")
+    if re.search(r"\b(?:scan network|scan wifi|find all devices|see all devices|scan local network)\b|فحص الشبكة", text):
+        return Plan(steps=[("scan_network_devices", {"force": True})],
+                    say=lambda r: r[0], name="scan_network")
+
     m = re.match(r"^(?:please )?(?:unlock|افتح|کردنەوەی)\s+(?:my\s+)?(?:phone|mobile|تلفوني|مۆبایل)(?:\s+(?:with\s+)?(?:pin|pass|passcode)?\s*([0-9a-zA-Z]+))?$", text)
     if m:
         pin = (m.group(1) or "").strip()
@@ -222,7 +235,7 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
         return Plan(steps=[("see_phone_screen", {"question": "Inspect mobile screen"})],
                     say=lambda r: r[0], name="see_phone_screen")
     if re.search(r"\b(start tunnel|start remote tunnel|remote access|enable tunnel)\b", text):
-        return Plan(steps=[("start_remote_tunnel", {"provider": "pinggy"})],
+        return Plan(steps=[("start_remote_tunnel", {"provider": "localhost_run"})],
                     say=lambda r: r[0], name="start_tunnel")
     if re.search(r"\b(ring|find|locate)\s+(?:my\s+)?phone\b|where('?s| is) my phone|رن على تلفوني|وين تلفوني|زەنگی مۆبایل", text):
         return Plan(steps=[("ring_phone", {})], say=_result_say(lambda: "Ringing your phone now."), name="ring_phone")

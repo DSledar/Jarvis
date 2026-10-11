@@ -1,6 +1,6 @@
 """Remote Access & Tunnel Manager:
 Enables secure remote access to JARVIS when away from home or on cellular (4G/5G).
-Uses native Windows OpenSSH reverse tunneling (pinggy.io / localhost.run) or custom tunnel URLs.
+Uses native Windows OpenSSH reverse tunneling (localhost.run / pinggy.io / serveo.net).
 """
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ SETTINGS_FILE = ROOT / "data" / "remote_settings.json"
 STATE: dict[str, Any] = {
     "active": False,
     "url": "",
-    "provider": "pinggy",
+    "provider": "localhost_run",
     "pid": None,
     "started_at": 0,
     "last_error": "",
@@ -30,6 +30,13 @@ STATE: dict[str, Any] = {
 _PROCESS: subprocess.Popen | None = None
 _LOCK = threading.Lock()
 
+TUNNEL_PATTERNS = [
+    re.compile(r"https://[a-zA-Z0-9_\-]+\.lhr\.life"),
+    re.compile(r"https://[a-zA-Z0-9_\-]+\.a\.pinggy\.link"),
+    re.compile(r"https://[a-zA-Z0-9_\-]+\.pinggy\.link"),
+    re.compile(r"https://[a-zA-Z0-9_\-]+\.serveo\.net"),
+]
+
 
 def _load_settings() -> dict:
     if SETTINGS_FILE.is_file():
@@ -37,7 +44,7 @@ def _load_settings() -> dict:
             return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return {"custom_url": "", "preferred_provider": "pinggy"}
+    return {"custom_url": "", "preferred_provider": "localhost_run"}
 
 
 def _save_settings(data: dict) -> None:
@@ -48,7 +55,6 @@ def _save_settings(data: dict) -> None:
 def get_tunnel_status() -> dict[str, Any]:
     global _PROCESS
     with _LOCK:
-        # Check if process died
         if _PROCESS is not None:
             poll = _PROCESS.poll()
             if poll is not None:
@@ -69,30 +75,52 @@ def get_tunnel_status() -> dict[str, Any]:
 
 
 def _reader_thread(proc: subprocess.Popen, provider: str) -> None:
-    url_pattern = re.compile(r"https://[a-zA-Z0-9_\-\.]+\.(?:a\.pinggy\.link|pinggy\.link|lhr\.life|serveo\.net)")
-    general_url = re.compile(r"https://[a-zA-Z0-9_\-\.]+\.[a-zA-Z]{2,}(?::\d+)?(?:/[a-zA-Z0-9_\-\.]*)?")
+    try:
+        for line in iter(proc.stdout.readline, ""):
+            line_str = str(line).strip()
+            if not line_str:
+                continue
 
-    for line in iter(proc.stdout.readline, ""):
-        line_str = str(line).strip()
-        if not line_str:
-            continue
+            # Ignore docs/admin banners
+            if "admin.localhost.run" in line_str or "localhost.run/docs" in line_str:
+                continue
 
-        # Look for URL
-        match = url_pattern.search(line_str) or general_url.search(line_str)
-        if match and not STATE["url"]:
-            candidate = match.group(0).rstrip(" \t\r\n.,;)")
-            with _LOCK:
-                STATE["url"] = candidate
-                STATE["active"] = True
-                STATE["last_error"] = ""
+            for pat in TUNNEL_PATTERNS:
+                m = pat.search(line_str)
+                if m:
+                    found = m.group(0).rstrip(" \t\r\n.,;)")
+                    with _LOCK:
+                        if not STATE["url"]:
+                            STATE["url"] = found
+                            STATE["active"] = True
+                            STATE["last_error"] = ""
+                    break
+    except Exception:
+        pass
 
-    # When stdout ends
     with _LOCK:
-        if _PROCESS == proc:
+        if _PROCESS == proc and proc.poll() is not None:
             STATE["active"] = False
 
 
-def start_tunnel(provider: str = "pinggy", port: int = 8000) -> dict[str, Any]:
+def _kill_proc(proc: subprocess.Popen) -> None:
+    try:
+        if proc.stdout:
+            try:
+                proc.stdout.close()
+            except Exception:
+                pass
+        if platform.system().lower() == "windows":
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True, timeout=2)
+        else:
+            proc.kill()
+    except Exception:
+        pass
+
+
+
+def start_tunnel(provider: str = "localhost_run", port: int = 8000) -> dict[str, Any]:
     """Starts a secure reverse SSH tunnel to expose port 8000 to the internet over HTTPS."""
     global _PROCESS
 
@@ -100,12 +128,8 @@ def start_tunnel(provider: str = "pinggy", port: int = 8000) -> dict[str, Any]:
         if _PROCESS is not None and _PROCESS.poll() is None and STATE["url"]:
             return get_tunnel_status()
 
-        # Clean old process
         if _PROCESS is not None:
-            try:
-                _PROCESS.terminate()
-            except Exception:
-                pass
+            _kill_proc(_PROCESS)
             _PROCESS = None
 
         ssh_bin = "C:\\Windows\\System32\\OpenSSH\\ssh.exe" if platform.system().lower() == "windows" else "ssh"
@@ -114,17 +138,8 @@ def start_tunnel(provider: str = "pinggy", port: int = 8000) -> dict[str, Any]:
 
         null_file = "NUL" if platform.system().lower() == "windows" else "/dev/null"
 
-        if provider == "localhost_run":
-            cmd = [
-                ssh_bin,
-                "-R", f"80:localhost:{port}",
-                "nokey@localhost.run",
-                "-o", "StrictHostKeyChecking=no",
-                "-o", f"UserKnownHostsFile={null_file}",
-                "-o", "ServerAliveInterval=30",
-                "-o", "ServerAliveCountMax=3",
-            ]
-        elif provider == "serveo":
+        # Default provider is localhost.run
+        if provider == "serveo":
             cmd = [
                 ssh_bin,
                 "-R", f"80:localhost:{port}",
@@ -133,14 +148,22 @@ def start_tunnel(provider: str = "pinggy", port: int = 8000) -> dict[str, Any]:
                 "-o", f"UserKnownHostsFile={null_file}",
                 "-o", "ServerAliveInterval=30",
             ]
-        else:
-            # Default pinggy
-            provider = "pinggy"
+        elif provider == "pinggy":
             cmd = [
                 ssh_bin,
                 "-p", "443",
                 "-R", f"0:localhost:{port}",
-                "qr@a.pinggy.io",
+                "a.pinggy.io",
+                "-o", "StrictHostKeyChecking=no",
+                "-o", f"UserKnownHostsFile={null_file}",
+                "-o", "ServerAliveInterval=30",
+            ]
+        else:
+            provider = "localhost_run"
+            cmd = [
+                ssh_bin,
+                "-R", f"80:localhost:{port}",
+                "nokey@localhost.run",
                 "-o", "StrictHostKeyChecking=no",
                 "-o", f"UserKnownHostsFile={null_file}",
                 "-o", "ServerAliveInterval=30",
@@ -166,7 +189,6 @@ def start_tunnel(provider: str = "pinggy", port: int = 8000) -> dict[str, Any]:
                 "last_error": "",
             })
 
-            # Start thread to read URL from stdout
             t = threading.Thread(target=_reader_thread, args=(proc, provider), daemon=True)
             t.start()
 
@@ -174,8 +196,8 @@ def start_tunnel(provider: str = "pinggy", port: int = 8000) -> dict[str, Any]:
             STATE["last_error"] = str(exc)
             return {"active": False, "error": str(exc)}
 
-    # Wait up to 5 seconds for URL detection
-    for _ in range(50):
+    # Wait up to 10 seconds for URL detection
+    for _ in range(100):
         time.sleep(0.1)
         if STATE["url"]:
             break
@@ -188,14 +210,7 @@ def stop_tunnel() -> dict[str, Any]:
     global _PROCESS
     with _LOCK:
         if _PROCESS is not None:
-            try:
-                _PROCESS.terminate()
-                _PROCESS.wait(timeout=2)
-            except Exception:
-                try:
-                    _PROCESS.kill()
-                except Exception:
-                    pass
+            _kill_proc(_PROCESS)
             _PROCESS = None
 
         STATE["active"] = False
@@ -205,7 +220,6 @@ def stop_tunnel() -> dict[str, Any]:
 
 
 def set_custom_url(url: str) -> dict[str, Any]:
-    """Sets a manual custom tunnel URL (e.g. from ngrok, Cloudflare, or dynamic DNS)."""
     clean_url = url.strip().rstrip("/")
     STATE["custom_url"] = clean_url
     cfg = _load_settings()
@@ -214,6 +228,5 @@ def set_custom_url(url: str) -> dict[str, Any]:
     return get_tunnel_status()
 
 
-# Load saved custom URL on import
 _saved = _load_settings()
 STATE["custom_url"] = _saved.get("custom_url", "")

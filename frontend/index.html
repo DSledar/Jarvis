@@ -267,12 +267,29 @@
             <div id="wolInfoDisplay" style="padding:10px; border-radius:4px; background:#04121a; border:1px solid var(--line-soft); font-size:13.5px; font-family:var(--mono); margin:10px 0;">
               Loading PC MAC address...
             </div>
-            <div class="row-btns" style="gap:8px;">
+            <div class="row-btns" style="gap:8px; flex-wrap:wrap;">
               <button class="ghost" id="btnTestWol" type="button">⚡ Test WoL Packet</button>
               <button class="ghost danger" id="btnSleepPcDash" type="button">💤 Put PC to Sleep</button>
+              <button class="ghost" id="btnCopyMacDash" type="button">📋 Copy MAC</button>
             </div>
           </section>
 
+          <section class="panel">
+            <h3>Phone Hardware & Remote Control</h3>
+            <p class="muted">Access hardware features on your connected phone directly from this PC:</p>
+            <div class="row-btns" style="gap:8px; margin-bottom:10px; flex-wrap:wrap;">
+              <button class="primary" id="btnTogglePhoneFlashlight" type="button">🔦 Toggle Flashlight (Off)</button>
+              <button class="ghost" id="btnVibratePhoneDash" type="button">📳 Vibrate Phone</button>
+              <button class="ghost" id="btnRequestPhonePhoto" type="button">📸 Request Photo</button>
+            </div>
+            <form class="inline-form" id="phoneSpeakForm" style="margin-top:6px;">
+              <input id="phoneSpeakInput" type="text" placeholder="Speak text aloud on phone..." />
+              <button class="ghost" type="submit">Speak</button>
+            </form>
+          </section>
+        </div>
+
+        <div class="media-grid" style="margin-top:16px;">
           <section class="panel">
             <h3>Connected phones</h3>
             <div id="connectedPhonesList">
@@ -283,16 +300,17 @@
               <button class="primary" id="sendNotifyPhoneBtn" type="button">Send test alert to phone</button>
             </div>
           </section>
-        </div>
 
-        <section class="panel">
-          <div class="panel-head">
-            <h3>Discovered nearby devices on local network</h3>
-          </div>
-          <div id="nearbyDevicesList">
-            <p class="empty">Scanning local network...</p>
-          </div>
-        </section>
+          <section class="panel">
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">Discovered Devices on Local Wi-Fi</h3>
+              <button class="ghost mini" id="btnRefreshDevices" type="button">🔄 Scan Subnet</button>
+            </div>
+            <div id="nearbyDevicesList">
+              <p class="empty">Scanning local network...</p>
+            </div>
+          </section>
+        </div>
       </div>
     </section>
 

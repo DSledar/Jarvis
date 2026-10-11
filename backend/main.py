@@ -484,12 +484,80 @@ async def devices_send(payload: dict) -> dict:
 
 # ----------------------------------------------------------------------------- Live Screen Streaming & Mobile Remote Control
 @app.get("/api/phone/screen")
-async def phone_screen_stream(token: str = "") -> Response:
+async def phone_screen_snapshot(token: str = "") -> Response:
     from fastapi.responses import Response
     if token and not devices.validate_token(token):
         raise HTTPException(status_code=401, detail="Unauthorized")
     data = await asyncio.to_thread(phone_control.capture_pc_screen_bytes, 1280, 65)
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store, must-revalidate"})
+
+
+@app.get("/api/phone/screen/stream")
+async def phone_screen_mjpeg_stream(token: str = "") -> StreamingResponse:
+    """Continuous low-latency MJPEG stream (~16 FPS) for real-time live desktop viewing."""
+    if token and not devices.validate_token(token):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+    async def frame_generator():
+        try:
+            while True:
+                frame = await asyncio.to_thread(phone_control.capture_pc_screen_bytes, 1024, 55)
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n"
+                    b"Content-Length: " + str(len(frame)).encode("ascii") + b"\r\n\r\n" +
+                    frame + b"\r\n"
+                )
+                await asyncio.sleep(0.06)
+        except asyncio.CancelledError:
+            pass
+        except Exception:
+            pass
+
+    return StreamingResponse(
+        frame_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.get("/api/phone/flashlight")
+async def phone_flashlight_get() -> dict:
+    return {"ok": True, "state": phone_control.get_phone_torch_state()}
+
+
+@app.post("/api/phone/flashlight")
+async def phone_flashlight_post(payload: dict) -> dict:
+    tok = str(payload.get("token", ""))
+    if tok and not devices.validate_token(tok):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    state = bool(payload.get("state", not phone_control.get_phone_torch_state()))
+    return phone_control.set_phone_torch(state)
+
+
+@app.post("/api/phone/vibrate")
+async def phone_vibrate_post(payload: dict) -> dict:
+    duration = int(payload.get("duration", 500))
+    return phone_control.vibrate_phone(duration)
+
+
+@app.post("/api/phone/speak")
+async def phone_speak_post(payload: dict) -> dict:
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text cannot be empty")
+    return phone_control.speak_on_phone(text)
+
+
+@app.post("/api/phone/photo_request")
+async def phone_photo_request() -> dict:
+    devices.queue_phone_event("snap_photo", {"message": "JARVIS requested a camera snapshot."})
+    return {"ok": True, "message": "Photo snapshot requested from phone."}
 
 
 class PhoneMouseRequest(BaseModel):

@@ -1024,6 +1024,56 @@ def get_remote_url_tool() -> str:
     return "Remote tunnel is not currently active. Start it using start_remote_tunnel or in Nearby & Phone tab."
 
 
+@tool("toggle_phone_flashlight", "Turn on or turn off the camera LED flashlight (torch) on the user's phone.",
+      {"on": "boolean: true to turn flashlight on, false to turn flashlight off"})
+def toggle_phone_flashlight_tool(on: bool = True) -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    res = devices.toggle_phone_flashlight(bool(on))
+    state_str = "ON" if on else "OFF"
+    return f"Phone flashlight turned {state_str}. ({res.get('message', 'Signal sent')})"
+
+
+@tool("vibrate_phone", "Trigger vibration on the user's connected phone.",
+      {"duration_ms": "integer: Duration of vibration in milliseconds (e.g. 500)"})
+def vibrate_phone_tool(duration_ms: int = 500) -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    devices.vibrate_phones(int(duration_ms))
+    return f"Vibration signal ({duration_ms}ms) sent to phone."
+
+
+@tool("speak_on_phone", "Play voice speech out loud through the connected phone's speakers.",
+      {"text": "string: Text to speak out loud on the phone"})
+def speak_on_phone_tool(text: str) -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    devices.speak_on_phones(str(text))
+    return f"Audio speech '{text}' dispatched to connected phone."
+
+
+@tool("scan_network_devices", "Scan the local Wi-Fi network to discover all devices (phones, computers, router) with IP and MAC.",
+      {"force": "boolean: Set true to force a fresh network scan"})
+def scan_network_devices_tool(force: bool = True) -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    devs = devices.scan_nearby_devices(force=bool(force))
+    if not devs:
+        return "No other devices found on the local network."
+    lines = [f"Discovered {len(devs)} device(s) on local network:"]
+    for d in devs:
+        lines.append(f"- {d.get('hostname')} | IP: {d.get('ip')} | MAC: {d.get('mac')} | Type: {d.get('type')}")
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------- metadata for the dashboard
 CATEGORIES = {
     "Apps and web": ["open_app", "list_apps", "open_url", "web_search", "youtube_play", "youtube_search", "spotify_search"],
@@ -1031,7 +1081,7 @@ CATEGORIES = {
     "Mouse and keyboard": ["mouse_click", "mouse_move", "scroll", "type_text", "press_key", "show_desktop", "screen_size"],
     "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "take_screenshot", "look_at_screen", "see_pc_screen", "see_phone_screen", "clipboard", "lock_pc"],
     "Python & Coding": ["execute_python", "analyze_code", "python_doc", "write_code_file"],
-    "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
+    "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "toggle_phone_flashlight", "vibrate_phone", "speak_on_phone", "scan_network_devices", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
     "System and files": ["system_info", "get_time", "list_processes", "list_dir", "read_file", "open_path"],
     "Memory": ["remember", "forget"],
     "Needs your approval": ["run_command", "write_file", "delete_path", "power"],

@@ -473,15 +473,15 @@ function renderNearbyDevices() {
   box.innerHTML = '';
   const devs = devicesData.nearby_devices || [];
   if (!devs.length) {
-    box.append(el('p', 'empty', 'No nearby devices found yet. Press "Scan network" above.'));
+    box.append(el('p', 'empty', 'No nearby devices found yet. Press "Scan Subnet" above.'));
     return;
   }
   const table = el('table', 'dev-table');
-  table.innerHTML = '<thead><tr><th>Device / Host</th><th>Type</th><th>IP Address</th><th>Status</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Device / Host</th><th>Type</th><th>IP Address</th><th>MAC Address</th><th>Status</th></tr></thead>';
   const tbody = el('tbody');
   devs.forEach((d) => {
     const tr = el('tr');
-    tr.innerHTML = `<td><b>${d.hostname || 'Device'}</b></td><td>${d.type || 'Unknown'}</td><td><code>${d.ip}</code></td><td><span class="dot-ok">${d.status}</span></td>`;
+    tr.innerHTML = `<td><b>${d.hostname || 'Device'}</b>${d.vendor ? ` <small class="muted">(${d.vendor})</small>` : ''}</td><td>${d.type || 'Unknown'}</td><td><code>${d.ip}</code></td><td><code style="color:var(--cyan)">${d.mac || 'N/A'}</code></td><td><span class="dot-ok">${d.status}</span></td>`;
     tbody.append(tr);
   });
   table.append(tbody);
@@ -489,14 +489,14 @@ function renderNearbyDevices() {
 }
 
 async function scanDevices() {
-  toast('Scanning local network for nearby devices...');
+  toast('Scanning local Wi-Fi subnet for devices...');
   try {
     const d = await api('/api/devices/scan', {});
     devicesData.nearby_devices = d.nearby_devices;
     devicesData.connected_phones = d.connected_phones;
     renderConnectedPhones();
     renderNearbyDevices();
-    toast(`Found ${d.nearby_devices.length} nearby device(s).`);
+    toast(`Discovered ${d.nearby_devices.length} device(s) on local network.`);
   } catch (e) {
     toast(e.message, true);
   }
@@ -511,6 +511,56 @@ async function ringPhone() {
   }
 }
 
+let phoneFlashlightState = false;
+
+$('#btnTogglePhoneFlashlight')?.addEventListener('click', async () => {
+  try {
+    phoneFlashlightState = !phoneFlashlightState;
+    const res = await api('/api/phone/flashlight', { state: phoneFlashlightState });
+    phoneFlashlightState = Boolean(res.state);
+    const btn = $('#btnTogglePhoneFlashlight');
+    if (btn) {
+      btn.textContent = phoneFlashlightState ? '🔦 Flashlight (ON)' : '🔦 Toggle Flashlight (Off)';
+      btn.classList.toggle('primary', phoneFlashlightState);
+    }
+    toast(`Phone flashlight ${phoneFlashlightState ? 'turned ON' : 'turned OFF'}!`);
+  } catch (e) {
+    toast('Flashlight error: ' + e.message, true);
+  }
+});
+
+$('#btnVibratePhoneDash')?.addEventListener('click', async () => {
+  try {
+    await api('/api/phone/vibrate', { duration: 600 });
+    toast('Vibration signal dispatched to phone!');
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+$('#btnRequestPhonePhoto')?.addEventListener('click', async () => {
+  try {
+    await api('/api/phone/photo_request', {});
+    toast('Photo snapshot requested from phone camera.');
+  } catch (e) {
+    toast(e.message, true);
+  }
+});
+
+$('#phoneSpeakForm')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const text = $('#phoneSpeakInput')?.value.trim();
+  if (!text) return toast('Type text to speak on phone first.', true);
+  try {
+    await api('/api/phone/speak', { text });
+    $('#phoneSpeakInput').value = '';
+    toast(`Sent speech to phone: "${text}"`);
+  } catch (err) {
+    toast(err.message, true);
+  }
+});
+
+$('#btnRefreshDevices')?.addEventListener('click', scanDevices);
 $('#scanDevicesBtn')?.addEventListener('click', scanDevices);
 $('#ringPhoneBtn')?.addEventListener('click', ringPhone);
 $('#copyPortalLink')?.addEventListener('click', () => {
@@ -739,20 +789,34 @@ async function toggleRemoteTunnel() {
       toast('Stopping remote tunnel...');
       await api('/api/remote/stop', {});
       toast('Remote tunnel stopped.');
+      await refreshTunnelStatus();
     } else {
-      toast('Starting secure reverse SSH tunnel (pinggy.io)...');
-      const d = await api('/api/remote/start', { provider: 'pinggy' });
-      if (d.active && d.url) {
+      toast('Starting secure reverse SSH tunnel (localhost.run)...');
+      btn.textContent = 'Connecting...';
+      const d = await api('/api/remote/start', { provider: 'localhost_run' });
+
+      // Actively poll until public URL is captured
+      let gotUrl = Boolean(d.active && d.url);
+      for (let i = 0; i < 15 && !gotUrl; i++) {
+        await new Promise((r) => setTimeout(r, 1000));
+        await refreshTunnelStatus();
+        if (tunnelState.active && tunnelState.url) {
+          gotUrl = true;
+          break;
+        }
+      }
+
+      if (gotUrl) {
         toast('Remote tunnel active! Open URL on your phone.');
       } else {
-        toast('Tunnel launched. Waiting for URL...', false);
+        toast(tunnelState.last_error ? `Tunnel notice: ${tunnelState.last_error}` : 'Tunnel started. Refreshing URL...', false);
       }
     }
-    await refreshTunnelStatus();
   } catch (err) {
     toast('Tunnel error: ' + err.message, true);
   } finally {
     btn.disabled = false;
+    await refreshTunnelStatus();
   }
 }
 
@@ -770,15 +834,22 @@ $('#btnOpenGitHubGuide')?.addEventListener('click', () => {
   $('#githubModal')?.classList.remove('hidden');
 });
 
+let currentPcMac = '9C:C7:D3:36:72:C6';
 async function loadWolInfo() {
   try {
     const data = await api('/api/phone/wol_info');
+    currentPcMac = data.mac_address || '9C:C7:D3:36:72:C6';
     const display = $('#wolInfoDisplay');
     if (display) {
-      display.innerHTML = `Host: <b>${data.pc_name}</b><br>MAC Address: <span style="color:var(--cyan)">${data.mac_address}</span><br>Broadcast IP: ${data.broadcast_ip} (Port 9)`;
+      display.innerHTML = `Host: <b>${data.pc_name}</b><br>MAC Address: <span style="color:var(--cyan); font-weight:700;">${currentPcMac}</span><br>Broadcast IP: <b>${data.broadcast_ip}</b> (Port 9)`;
     }
   } catch (err) {}
 }
+
+$('#btnCopyMacDash')?.addEventListener('click', () => {
+  navigator.clipboard?.writeText(currentPcMac);
+  toast(`Copied PC MAC address (${currentPcMac}) to clipboard!`);
+});
 
 $('#btnTestWol')?.addEventListener('click', async () => {
   try {

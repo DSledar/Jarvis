@@ -158,13 +158,88 @@ def capture_phone_screenshot() -> str:
     return ""
 
 
+# --------------------------------------------------------------------------- Phone Flashlight, Vibration, and Audio
+_PHONE_TORCH_STATE: bool = False
+
+
+def set_phone_torch(on: bool) -> dict[str, Any]:
+    """Toggles phone flashlight / torch via ADB or push event to connected companion."""
+    global _PHONE_TORCH_STATE
+    _PHONE_TORCH_STATE = bool(on)
+
+    adb = find_adb()
+    adb_devs = get_adb_devices() if adb else []
+    adb_success = False
+    if adb and adb_devs:
+        target = adb_devs[0]["serial"]
+        try:
+            arg = "1" if on else "0"
+            subprocess.run([adb, "-s", target, "shell", "cmd", "flashlight", arg],
+                           capture_output=True, timeout=3)
+            adb_success = True
+        except Exception:
+            pass
+
+    from . import devices
+    devices.queue_phone_event("torch", {
+        "enabled": bool(on),
+        "timestamp": time.time(),
+        "message": f"Flashlight turned {'ON' if on else 'OFF'} by JARVIS.",
+    })
+
+    return {
+        "ok": True,
+        "state": bool(on),
+        "adb": adb_success,
+        "message": f"Phone flashlight turned {'ON' if on else 'OFF'}.",
+    }
+
+
+def get_phone_torch_state() -> bool:
+    return _PHONE_TORCH_STATE
+
+
+def vibrate_phone(duration_ms: int = 500) -> dict[str, Any]:
+    """Requests phone to vibrate for specified duration in ms."""
+    from . import devices
+    devices.queue_phone_event("vibrate", {
+        "duration": duration_ms,
+        "pattern": [duration_ms, 150, duration_ms] if duration_ms > 400 else [duration_ms],
+        "message": f"Vibrated for {duration_ms}ms",
+    })
+    return {"ok": True, "message": f"Vibration signal ({duration_ms}ms) sent to phone."}
+
+
+def speak_on_phone(text: str) -> dict[str, Any]:
+    """Requests phone to announce text using its speaker / TTS."""
+    from . import devices
+    devices.queue_phone_event("speak", {
+        "text": text,
+        "message": f"Speak requested: {text}",
+    })
+    return {"ok": True, "message": f"Requested phone to speak: '{text}'."}
+
+
 # --------------------------------------------------------------------------- Wake-on-LAN (WoL) & Sleep
 def get_mac_address() -> str:
-    """Retrieves MAC address of PC network adapter."""
+    """Retrieves physical MAC address of active PC network adapter."""
+    # 1. On Windows, get physical MAC of the Up adapter from PowerShell
+    if platform.system().lower() == "windows":
+        try:
+            ps_cmd = 'Get-NetAdapter | Where-Object Status -eq "Up" | Select-Object -ExpandProperty MacAddress'
+            res = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd],
+                                 capture_output=True, text=True, timeout=4)
+            for line in res.stdout.strip().splitlines():
+                clean = re.sub(r"[^0-9a-fA-F]", "", line.strip())
+                if len(clean) == 12:
+                    return ":".join(clean[i:i+2].upper() for i in range(0, 12, 2))
+        except Exception:
+            pass
+
+    # 2. Inspect psutil interfaces
     try:
         import psutil
         for iface, addrs in psutil.net_if_addrs().items():
-            # Check if this interface has an IPv4 in the private range
             has_private_ip = False
             mac = ""
             for a in addrs:
@@ -173,14 +248,13 @@ def get_mac_address() -> str:
                 if hasattr(psutil, "AF_LINK") and a.family == psutil.AF_LINK:
                     mac = a.address
             if has_private_ip and mac and len(mac.replace("-", "").replace(":", "")) == 12:
-                return mac.replace("-", ":").upper()
+                clean = re.sub(r"[^0-9a-fA-F]", "", mac)
+                return ":".join(clean[i:i+2].upper() for i in range(0, 12, 2))
     except Exception:
         pass
 
-    # Fallback to uuid node
-    mac_int = uuid.getnode()
-    mac_hex = f"{mac_int:012X}"
-    return ":".join(mac_hex[i:i+2] for i in range(0, 12, 2))
+    # 3. Known physical Realtek Wi-Fi hardware MAC fallback
+    return "9C:C7:D3:36:72:C6"
 
 
 def get_wol_info() -> dict[str, Any]:
@@ -201,10 +275,10 @@ def get_wol_info() -> dict[str, Any]:
         "port": 9,
         "instructions": (
             "To wake this PC from your phone when it is asleep:\n"
-            f"1. Make sure Wake-on-LAN is enabled in Windows Device Manager -> Network Adapter -> Advanced.\n"
+            f"1. Make sure Wake-on-LAN is enabled on Realtek 8852BE WiFi (run enable_laptop_wol.bat as Admin).\n"
             f"2. Your PC MAC address is: {mac}\n"
             f"3. Send WoL Magic Packet to {broadcast} port 9.\n"
-            "4. You can use the one-tap Wake button in the JARVIS Phone Companion, or any free WoL app."
+            "4. When PC is asleep, use the Android WoL 1-tap intent or a free WoL app."
         ),
     }
 

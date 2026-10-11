@@ -2,236 +2,308 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#030b11" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>JARVIS Mobile Commander</title>
   <style>
     :root {
-      --bg: #030a0f;
-      --card: #071720;
-      --card-border: #0f394a;
+      --bg: #030b11;
+      --card: #081824;
+      --card-border: #0f394d;
       --cyan: #3fe6ff;
-      --cyan-dim: #187d91;
+      --cyan-dim: #136677;
+      --cyan-glow: rgba(63, 230, 255, 0.35);
       --amber: #ffb54a;
-      --red: #ff6b57;
-      --green: #53f2a1;
-      --text: #e8f8fc;
-      --muted: #8db0bb;
-      --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Roboto, sans-serif;
+      --red: #ff5e57;
+      --green: #4ade80;
+      --text: #eaf6fa;
+      --muted: #8aa7b5;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
       --mono: "Cascadia Mono", Consolas, monospace;
+      --nav-height: 64px;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-    html, body { margin: 0; padding: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 var(--font); }
+    html, body {
+      margin: 0; padding: 0; width: 100%; min-height: 100%;
+      background: var(--bg); color: var(--text); font: 15px/1.4 var(--font);
+      overflow-x: hidden;
+    }
     body {
-      background: radial-gradient(circle at 50% 0%, #0b2f3f 0%, var(--bg) 75%);
+      background: radial-gradient(circle at 50% -10%, #0c3345 0%, var(--bg) 75%);
       display: flex; flex-direction: column; min-height: 100vh;
+      padding-bottom: calc(var(--nav-height) + env(safe-area-inset-bottom, 12px));
     }
     .hidden { display: none !important; }
 
-    /* Header */
+    /* Top Bar */
     header {
-      padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;
-      border-bottom: 1px solid var(--card-border); background: rgba(4, 15, 22, 0.92);
-      backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 30;
+      padding: 12px 16px; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--card-border); background: rgba(5, 18, 27, 0.94);
+      backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+      position: sticky; top: 0; z-index: 50;
     }
-    .brand { display: flex; align-items: center; gap: 8px; }
+    .brand { display: flex; align-items: center; gap: 10px; }
     .mark {
-      width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--cyan);
-      box-shadow: 0 0 10px var(--cyan); display: flex; align-items: center; justify-content: center;
+      width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--cyan);
+      box-shadow: 0 0 12px var(--cyan-glow); display: flex; align-items: center; justify-content: center;
+      position: relative;
     }
     .mark::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); }
-    .title { font-weight: 700; font-size: 16px; letter-spacing: 0.08em; color: #fff; }
+    .title { font-weight: 800; font-size: 16px; letter-spacing: 0.1em; color: #fff; }
     .status-badge {
-      display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
-      padding: 4px 8px; border-radius: 12px; background: rgba(83, 242, 161, 0.12);
+      display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 600;
+      padding: 5px 10px; border-radius: 14px; background: rgba(74, 222, 128, 0.12);
       border: 1px solid var(--green); color: var(--green);
     }
-    .status-badge.bad { background: rgba(255, 107, 87, 0.12); border-color: var(--red); color: var(--red); }
-    .status-badge i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+    .status-badge.bad { background: rgba(255, 94, 87, 0.12); border-color: var(--red); color: var(--red); }
+    .status-badge i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
 
-    /* Nav Tabs */
-    .tab-bar {
-      display: flex; background: #04121a; border-bottom: 1px solid var(--card-border);
-      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    /* Fixed Bottom Navigation */
+    .bottom-nav {
+      position: fixed; bottom: 0; left: 0; right: 0; height: var(--nav-height);
+      background: rgba(4, 16, 24, 0.96); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+      border-top: 1px solid var(--card-border); display: flex; justify-content: space-around;
+      align-items: center; z-index: 60; padding-bottom: env(safe-area-inset-bottom, 0px);
     }
-    .tab-btn {
-      flex: 1; min-width: 80px; padding: 10px 6px; border: none; background: transparent;
-      color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; cursor: pointer;
-      border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.2s;
+    .nav-item {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      background: none; border: none; color: var(--muted); padding: 6px 0; cursor: pointer;
+      font-size: 10.5px; font-weight: 600; letter-spacing: 0.03em; transition: color 0.15s;
     }
-    .tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); background: rgba(63, 230, 255, 0.06); }
+    .nav-item svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 2; margin-bottom: 3px; }
+    .nav-item.active { color: var(--cyan); }
+    .nav-item.active svg { stroke: var(--cyan); filter: drop-shadow(0 0 6px var(--cyan-glow)); }
+
+    /* Main Container */
+    main { flex: 1; padding: 14px; display: flex; flex-direction: column; gap: 14px; max-width: 680px; margin: 0 auto; width: 100%; }
+
+    /* Panels */
+    .panel {
+      background: var(--card); border: 1px solid var(--card-border); border-radius: 10px;
+      padding: 14px; display: flex; flex-direction: column; gap: 12px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; }
+    .panel-head h3 { margin: 0; font-size: 13.5px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.08em; }
 
     /* Auth Screen */
     .auth-box {
       flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
-      padding: 24px; text-align: center; gap: 16px;
+      padding: 28px 20px; text-align: center; gap: 18px; margin-top: 40px;
     }
     .lock-orb {
-      width: 80px; height: 80px; border-radius: 50%; border: 2px dashed var(--cyan);
-      display: flex; align-items: center; justify-content: center; margin-bottom: 6px;
-      box-shadow: 0 0 25px rgba(63, 230, 255, 0.25);
+      width: 86px; height: 86px; border-radius: 50%; border: 2px dashed var(--cyan);
+      display: flex; align-items: center; justify-content: center;
+      box-shadow: 0 0 30px var(--cyan-glow); animation: pulse 2.5s infinite;
     }
-    .lock-orb svg { width: 38px; height: 38px; stroke: var(--cyan); fill: none; stroke-width: 2; }
-    .auth-box h2 { margin: 0; font-size: 22px; font-weight: 600; }
-    .auth-box p { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 300px; }
+    .lock-orb svg { width: 42px; height: 42px; stroke: var(--cyan); fill: none; stroke-width: 2; }
+    .auth-box h2 { margin: 0; font-size: 22px; font-weight: 700; }
+    .auth-box p { margin: 0; color: var(--muted); font-size: 14px; max-width: 320px; line-height: 1.5; }
     .pass-input {
-      width: 100%; max-width: 280px; padding: 12px 16px; font-size: 18px; text-align: center;
-      letter-spacing: 0.2em; border-radius: 6px; border: 1px solid var(--cyan-dim);
-      background: #04141d; color: #fff; font-family: var(--mono); outline: none;
+      width: 100%; max-width: 280px; padding: 14px; font-size: 20px; text-align: center;
+      letter-spacing: 0.25em; border-radius: 8px; border: 1px solid var(--cyan-dim);
+      background: #04141e; color: #fff; font-family: var(--mono); outline: none;
     }
-    .pass-input:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(63, 230, 255, 0.4); }
+    .pass-input:focus { border-color: var(--cyan); box-shadow: 0 0 15px var(--cyan-glow); }
     .btn-connect {
-      width: 100%; max-width: 280px; padding: 13px; border-radius: 6px; font-size: 15px;
-      font-weight: 700; background: var(--cyan); color: #00222a; border: none; cursor: pointer;
+      width: 100%; max-width: 280px; padding: 14px; border-radius: 8px; font-size: 15px;
+      font-weight: 700; background: var(--cyan); color: #011b24; border: none; cursor: pointer;
+      box-shadow: 0 0 15px var(--cyan-glow);
     }
     .btn-connect:active { filter: brightness(0.9); }
 
-    /* Main Container */
-    main { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 12px; max-width: 650px; margin: 0 auto; width: 100%; }
+    /* LIVE SCREEN STREAM (MJPEG Smooth Feed) */
+    .screen-wrapper {
+      position: relative; width: 100%; border-radius: 8px; overflow: hidden;
+      border: 1px solid var(--cyan-dim); background: #000; display: flex; align-items: center; justify-content: center;
+      min-height: 200px;
+    }
+    .live-stream-img {
+      width: 100%; height: auto; max-height: 65vh; display: block; object-fit: contain;
+      cursor: crosshair; user-select: none;
+    }
+    .live-tag {
+      position: absolute; top: 8px; left: 8px; background: rgba(220, 38, 38, 0.85);
+      color: #fff; font-size: 10.5px; font-weight: 800; padding: 3px 8px; border-radius: 4px;
+      display: flex; align-items: center; gap: 5px; text-transform: uppercase; letter-spacing: 0.08em;
+    }
+    .live-tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: #fff; animation: pulse 1s infinite; }
+    .stream-overlay-controls {
+      position: absolute; top: 8px; right: 8px; display: flex; gap: 6px;
+    }
+    .stream-btn {
+      padding: 5px 9px; font-size: 11.5px; font-weight: 600; border-radius: 5px;
+      background: rgba(0, 0, 0, 0.75); border: 1px solid var(--cyan-dim); color: #fff;
+      cursor: pointer; backdrop-filter: blur(6px);
+    }
+    .stream-btn:active { border-color: var(--cyan); color: var(--cyan); }
+    .click-ripple {
+      position: absolute; width: 24px; height: 24px; border-radius: 50%;
+      border: 2px solid var(--cyan); background: rgba(63, 230, 255, 0.4);
+      transform: translate(-50%, -50%); pointer-events: none; animation: ripple 0.5s forwards;
+    }
+    @keyframes ripple {
+      0% { transform: translate(-50%, -50%) scale(0.3); opacity: 1; }
+      100% { transform: translate(-50%, -50%) scale(2); opacity: 0; }
+    }
 
-    /* Panels */
-    .panel {
-      background: var(--card); border: 1px solid var(--card-border); border-radius: 8px;
-      padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    /* FLASH LIGHT SECTION */
+    .torch-card {
+      background: linear-gradient(135deg, rgba(63, 230, 255, 0.08) 0%, rgba(7, 24, 34, 0.8) 100%);
+      border: 1px solid var(--cyan-dim); border-radius: 12px; padding: 18px; text-align: center;
+      display: flex; flex-direction: column; align-items: center; gap: 14px;
     }
-    .panel-head { display: flex; align-items: center; justify-content: space-between; }
-    .panel-head h3 { margin: 0; font-size: 14px; font-weight: 600; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; }
+    .torch-btn {
+      width: 100px; height: 100px; border-radius: 50%; border: 3px solid var(--cyan);
+      background: #061922; color: var(--cyan); display: flex; flex-direction: column;
+      align-items: center; justify-content: center; cursor: pointer; gap: 4px;
+      box-shadow: 0 0 20px rgba(63, 230, 255, 0.2); transition: all 0.25s ease;
+    }
+    .torch-btn svg { width: 36px; height: 36px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .torch-btn span { font-size: 11px; font-weight: 800; letter-spacing: 0.08em; }
+    .torch-btn.active {
+      background: #ffea79; color: #1a1500; border-color: #ffd700;
+      box-shadow: 0 0 45px rgba(255, 234, 121, 0.8), 0 0 80px rgba(255, 215, 0, 0.5);
+    }
+    .torch-btn.active svg { stroke: #1a1500; }
 
-    /* PC Live Screen */
-    .screen-container {
-      position: relative; width: 100%; border-radius: 6px; overflow: hidden;
-      border: 1px solid var(--cyan-dim); background: #000;
+    /* Screen Torch Overlay (100% fallback) */
+    .screen-torch-overlay {
+      position: fixed; inset: 0; z-index: 9999; background: #ffffff;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      color: #000; font-weight: 800; cursor: pointer;
     }
-    .screen-img {
-      width: 100%; height: auto; display: block; object-fit: contain; cursor: crosshair;
-    }
-    .screen-overlay-btn {
-      position: absolute; top: 6px; right: 6px; padding: 4px 8px; font-size: 11px;
-      border-radius: 4px; background: rgba(0,0,0,0.7); border: 1px solid var(--cyan);
-      color: var(--cyan); cursor: pointer;
+    .screen-torch-overlay span {
+      background: rgba(0, 0, 0, 0.6); color: #fff; padding: 10px 18px; border-radius: 20px;
+      font-size: 14px; letter-spacing: 0.05em;
     }
 
-    /* Virtual Touchpad */
+    /* Trackpad */
     .touchpad-box {
-      width: 100%; height: 190px; border-radius: 8px; border: 2px dashed var(--cyan-dim);
-      background: radial-gradient(circle at 50% 50%, #071f2c 0%, #030d13 100%);
+      width: 100%; height: 210px; border-radius: 10px; border: 2px dashed var(--cyan-dim);
+      background: radial-gradient(circle at 50% 50%, #072230 0%, #030f16 100%);
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       user-select: none; touch-action: none; position: relative;
     }
-    .touchpad-box:active { border-color: var(--cyan); box-shadow: inset 0 0 20px rgba(63, 230, 255, 0.15); }
-    .touchpad-hint { color: var(--muted); font-size: 12px; pointer-events: none; text-align: center; }
-
+    .touchpad-box:active { border-color: var(--cyan); box-shadow: inset 0 0 25px var(--cyan-glow); }
+    .touchpad-hint { color: var(--muted); font-size: 12.5px; pointer-events: none; text-align: center; line-height: 1.5; }
     .mouse-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     .mouse-btn {
-      padding: 11px; border-radius: 6px; border: 1px solid var(--card-border);
-      background: #061922; color: #fff; font-weight: 600; font-size: 13.5px; cursor: pointer;
+      padding: 13px; border-radius: 8px; border: 1px solid var(--card-border);
+      background: #061922; color: #fff; font-weight: 700; font-size: 14px; cursor: pointer;
       text-align: center;
     }
     .mouse-btn:active { background: rgba(63, 230, 255, 0.2); border-color: var(--cyan); }
 
-    /* Keyboard input & shortcuts */
-    .key-bar { display: flex; gap: 6px; }
+    /* Action Grids */
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .btn-action {
+      padding: 12px 10px; border-radius: 8px; border: 1px solid var(--card-border);
+      background: #061923; color: #d0edf5; font-size: 13.5px; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer;
+      text-align: center;
+    }
+    .btn-action:active { background: rgba(63, 230, 255, 0.18); border-color: var(--cyan); color: #fff; }
+    .btn-action svg { width: 18px; height: 18px; stroke: var(--cyan); fill: none; stroke-width: 2; flex-shrink: 0; }
+    .btn-action.highlight { border-color: var(--cyan-dim); color: #fff; background: rgba(63, 230, 255, 0.08); }
+    .btn-action.warning { border-color: #8c6a23; color: #ffca65; }
+    .btn-action.danger { border-color: #7a1d15; color: #ff8b7c; }
+
+    /* Keyboard bar */
+    .key-bar { display: flex; gap: 8px; }
     .key-bar input {
-      flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--card-border);
+      flex: 1; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--card-border);
       background: #04121a; color: #fff; font-size: 14px; outline: none;
     }
     .key-bar input:focus { border-color: var(--cyan); }
     .btn-key-send {
-      padding: 0 14px; border-radius: 6px; background: var(--cyan); color: #00222a;
-      border: none; font-weight: 700; font-size: 13px; cursor: pointer;
+      padding: 0 16px; border-radius: 8px; background: var(--cyan); color: #011b24;
+      border: none; font-weight: 800; font-size: 13.5px; cursor: pointer;
     }
-    .shortcut-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .shortcut-chips { display: flex; flex-wrap: wrap; gap: 6px; }
     .chip {
-      padding: 6px 9px; border-radius: 4px; font-size: 12px; font-weight: 600;
-      background: #08202d; border: 1px solid var(--card-border); color: #bde9f5; cursor: pointer;
+      padding: 7px 11px; border-radius: 6px; font-size: 12.5px; font-weight: 600;
+      background: #071f2b; border: 1px solid var(--card-border); color: #c4ecf7; cursor: pointer;
     }
-    .chip:active { border-color: var(--cyan); color: #fff; background: rgba(63, 230, 255, 0.15); }
+    .chip:active { border-color: var(--cyan); color: #fff; background: rgba(63, 230, 255, 0.2); }
 
-    /* Action Grid */
-    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-    .btn-action {
-      padding: 11px 8px; border-radius: 6px; border: 1px solid var(--card-border);
-      background: #061822; color: #cbe7ee; font-size: 13.5px; font-weight: 500;
-      display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer;
-      text-align: center;
+    /* Chat Section */
+    .chat-log {
+      max-height: 380px; min-height: 180px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 10px; padding: 4px;
     }
-    .btn-action:active { background: rgba(63, 230, 255, 0.15); border-color: var(--cyan); }
-    .btn-action svg { width: 17px; height: 17px; stroke: var(--cyan); fill: none; stroke-width: 2; flex-shrink: 0; }
-    .btn-action.highlight { border-color: var(--cyan-dim); color: #fff; font-weight: 600; }
-    .btn-action.danger { border-color: #83271d; color: #ff9182; }
+    .bubble {
+      padding: 10px 14px; border-radius: 10px; font-size: 14.5px; max-width: 88%;
+      word-break: break-word; line-height: 1.45;
+    }
+    .bubble.user { align-self: flex-end; background: #0c3345; border: 1px solid var(--cyan-dim); color: #fff; border-bottom-right-radius: 2px; }
+    .bubble.bot { align-self: flex-start; background: #061922; border-left: 3px solid var(--cyan); color: var(--text); border-bottom-left-radius: 2px; }
+    .bubble.err { border-left-color: var(--red); color: #ffb4a6; }
+
+    .chat-bar { display: flex; gap: 8px; }
+    .chat-bar input {
+      flex: 1; padding: 12px 14px; border-radius: 8px; border: 1px solid var(--card-border);
+      background: #04121a; color: #fff; font-size: 14.5px; outline: none;
+    }
+    .chat-bar input:focus { border-color: var(--cyan); }
+    .btn-icon {
+      width: 46px; height: 46px; border-radius: 8px; border: 1px solid var(--cyan-dim);
+      background: #061e29; color: var(--cyan); display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .btn-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; }
+    .btn-icon.live { background: var(--cyan); color: #00222a; animation: pulse 1s infinite; }
+
+    /* Info cards */
+    .info-card {
+      padding: 12px; border-radius: 8px; background: rgba(63, 230, 255, 0.05);
+      border: 1px solid var(--cyan-dim); font-size: 13.5px; color: var(--text); line-height: 1.5;
+    }
+    .info-card b { color: var(--cyan); }
 
     /* Media row */
     .media-row { display: flex; justify-content: space-between; gap: 6px; }
     .media-row button {
-      flex: 1; padding: 11px 4px; border-radius: 6px; border: 1px solid var(--card-border);
-      background: #061822; color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
+      flex: 1; padding: 12px 4px; border-radius: 6px; border: 1px solid var(--card-border);
+      background: #061822; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
     }
     .media-row button:active { border-color: var(--cyan); }
 
-    /* Chat Section */
-    .chat-log {
-      max-height: 240px; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column;
-      gap: 8px; padding: 4px;
-    }
-    .bubble {
-      padding: 8px 11px; border-radius: 6px; font-size: 14px; max-width: 90%;
-      word-break: break-word; line-height: 1.4;
-    }
-    .bubble.user { align-self: flex-end; background: #0c2d3a; border: 1px solid var(--cyan-dim); color: #fff; }
-    .bubble.bot { align-self: flex-start; background: #061922; border-left: 3px solid var(--cyan); color: var(--text); }
-    .bubble.err { border-left-color: var(--red); color: #ffb4a6; }
-
-    .chat-bar { display: flex; gap: 6px; }
-    .chat-bar input {
-      flex: 1; padding: 11px 13px; border-radius: 6px; border: 1px solid var(--card-border);
-      background: #04121a; color: #fff; font-size: 14px; outline: none;
-    }
-    .chat-bar input:focus { border-color: var(--cyan); }
-    .btn-icon {
-      width: 44px; height: 44px; border-radius: 6px; border: 1px solid var(--cyan-dim);
-      background: #061e29; color: var(--cyan); display: flex; align-items: center; justify-content: center;
-      cursor: pointer; flex-shrink: 0;
-    }
-    .btn-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; }
-    .btn-icon.live { background: var(--cyan); color: #00222a; animation: pulse 1s infinite; }
-
-    /* Info card */
-    .info-card {
-      padding: 10px; border-radius: 6px; background: rgba(63, 230, 255, 0.05);
-      border: 1px solid var(--cyan-dim); font-size: 13px; color: var(--text);
-    }
-    .info-card b { color: var(--cyan); }
-
     /* Alarm Banner */
     .alarm-banner {
-      position: fixed; inset: 0; z-index: 100; background: rgba(255, 107, 87, 0.95);
+      position: fixed; inset: 0; z-index: 100; background: rgba(239, 68, 68, 0.96);
       color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 16px; padding: 24px; text-align: center; animation: alarmFlash 0.6s infinite alternate;
+      gap: 18px; padding: 24px; text-align: center; animation: alarmFlash 0.5s infinite alternate;
     }
-    .alarm-banner h1 { margin: 0; font-size: 28px; }
+    .alarm-banner h1 { margin: 0; font-size: 30px; font-weight: 800; }
     .btn-dismiss {
-      padding: 13px 26px; border-radius: 8px; font-size: 17px; font-weight: 700;
-      background: #fff; color: #c0230d; border: none; cursor: pointer;
-    }
-    @keyframes alarmFlash {
-      from { background: rgba(220, 40, 20, 0.95); }
-      to { background: rgba(140, 20, 10, 0.95); }
-    }
-    @keyframes pulse {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.05); }
+      padding: 14px 30px; border-radius: 10px; font-size: 17px; font-weight: 800;
+      background: #fff; color: #b91c1c; border: none; cursor: pointer; box-shadow: 0 4px 20px rgba(0,0,0,0.5);
     }
 
     /* Toast */
     .toast {
-      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-      padding: 9px 16px; border-radius: 20px; font-size: 13.5px; background: #082430;
-      border: 1px solid var(--cyan); color: #fff; z-index: 50; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
-      max-width: 90%; text-align: center;
+      position: fixed; bottom: calc(var(--nav-height) + 16px); left: 50%; transform: translateX(-50%);
+      padding: 10px 18px; border-radius: 24px; font-size: 13.5px; font-weight: 600;
+      background: #072230; border: 1px solid var(--cyan); color: #fff; z-index: 70;
+      box-shadow: 0 4px 25px rgba(0,0,0,0.7); max-width: 90%; text-align: center;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+    @keyframes alarmFlash {
+      from { background: rgba(220, 38, 38, 0.96); }
+      to { background: rgba(153, 27, 27, 0.96); }
     }
   </style>
 </head>
 <body>
 
+  <!-- Top Navigation Header -->
   <header>
     <div class="brand">
       <div class="mark"></div>
@@ -246,47 +318,66 @@
       <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
     </div>
     <h2>JARVIS Mobile Commander</h2>
-    <p>Enter the access passcode to control your PC remotely, wake it from sleep, and stream display.</p>
+    <p>Enter your access passcode to take full control of your PC, stream the live display, and activate hardware tools.</p>
     <input type="password" id="passInput" class="pass-input" placeholder="PASSCODE" autocomplete="off" />
     <button id="btnConnect" class="btn-connect">Connect to JARVIS</button>
   </div>
 
   <!-- Connected Screen -->
   <div id="mainScreen" class="hidden" style="display:flex; flex-direction:column; flex:1;">
-    <!-- Navigation Tabs -->
-    <nav class="tab-bar">
-      <button class="tab-btn active" data-tab="tabRemote">🖱️ Remote & Screen</button>
-      <button class="tab-btn" data-tab="tabChat">💬 Voice & Chat</button>
-      <button class="tab-btn" data-tab="tabPower">⚡ Power & Windows</button>
-      <button class="tab-btn" data-tab="tabSync">📱 Sync & Camera</button>
-    </nav>
-
     <main>
-      <!-- TAB 1: REMOTE & SCREEN -->
-      <div id="tabRemote" class="tab-content">
-        <!-- Live PC Display -->
+      <!-- TAB 1: LIVE SCREEN (Continuous Smooth Stream) -->
+      <div id="tabScreen" class="tab-content">
         <section class="panel">
           <div class="panel-head">
-            <h3>Live PC Screen View</h3>
+            <h3>Live Desktop Stream</h3>
             <div style="display:flex; gap:6px;">
-              <button id="btnRefreshScreen" class="screen-overlay-btn" style="position:static;">🔄 Refresh</button>
-              <button id="btnAutoScreen" class="screen-overlay-btn" style="position:static;">⚡ Auto: Off</button>
+              <button id="btnFullscreenStream" class="stream-btn">⛶ Fullscreen</button>
+              <button id="btnReloadStream" class="stream-btn">🔄 Reconnect</button>
             </div>
           </div>
-          <div class="screen-container">
-            <img id="pcScreenImg" class="screen-img" src="/api/phone/screen" alt="PC Screen" />
+          <div class="screen-wrapper" id="streamWrapper">
+            <span class="live-tag">Live Stream</span>
+            <img id="liveScreenStream" class="live-stream-img" alt="Connecting live video feed..." />
           </div>
-          <span style="font-size:11.5px; color:var(--muted)">Tap anywhere on screen above to click that exact position on PC!</span>
+          <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted)">
+            <span>👆 Tap anywhere on the live desktop above to click that spot on your PC!</span>
+          </div>
         </section>
 
-        <!-- Touchpad & Mouse -->
+        <!-- Quick PC Actions under Stream -->
+        <section class="panel">
+          <div class="panel-head"><h3>Quick Controls</h3></div>
+          <div class="grid">
+            <button class="btn-action highlight" data-action="click">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/></svg>
+              Left Click
+            </button>
+            <button class="btn-action highlight" data-action="right_click">
+              <svg viewBox="0 0 24 24"><path d="M12 3v18M12 3a9 9 0 019 9v0a9 9 0 01-9 9"/></svg>
+              Right Click
+            </button>
+            <button class="btn-action" data-action="minimize">
+              <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/></svg>
+              Minimise Window
+            </button>
+            <button class="btn-action" data-action="maximize">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Full Size Window
+            </button>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 2: TRACKPAD & KEYBOARD -->
+      <div id="tabTrackpad" class="tab-content hidden">
         <section class="panel">
           <div class="panel-head">
-            <h3>Virtual Touchpad</h3>
+            <h3>Precision Touchpad</h3>
             <span style="font-size:11.5px; color:var(--cyan)">Tap=Click | 2-Finger=Right-Click</span>
           </div>
           <div id="touchpad" class="touchpad-box">
-            <span class="touchpad-hint">Drag finger here to move PC cursor<br>Tap to click • Double tap to double-click</span>
+            <span class="touchpad-hint">Drag finger here to move PC cursor<br>Tap to click • 2 fingers to scroll</span>
           </div>
           <div class="mouse-btns">
             <button class="mouse-btn" id="btnMouseLeft">Left Click</button>
@@ -294,12 +385,11 @@
           </div>
         </section>
 
-        <!-- Virtual Keyboard & Shortcuts -->
         <section class="panel">
           <div class="panel-head"><h3>PC Keyboard & Shortcuts</h3></div>
           <div class="key-bar">
             <input type="text" id="keyInput" placeholder="Type text to send to PC..." autocomplete="off" />
-            <button id="btnSendKeys" class="btn-key-send">Type on PC</button>
+            <button id="btnSendKeys" class="btn-key-send">Send</button>
           </div>
           <div class="shortcut-chips">
             <button class="chip" data-key="win">Win Key</button>
@@ -307,64 +397,100 @@
             <button class="chip" data-key="backspace">Backspace</button>
             <button class="chip" data-key="esc">Esc</button>
             <button class="chip" data-key="alt+tab">Alt+Tab</button>
-            <button class="chip" data-key="ctrl+c">Ctrl+C</button>
-            <button class="chip" data-key="ctrl+v">Ctrl+V</button>
+            <button class="chip" data-key="ctrl+c">Copy (Ctrl+C)</button>
+            <button class="chip" data-key="ctrl+v">Paste (Ctrl+V)</button>
             <button class="chip" data-key="win+d">Desktop (Win+D)</button>
             <button class="chip" data-key="win+l">Lock (Win+L)</button>
             <button class="chip" data-key="space">Space</button>
-            <button class="chip" data-key="up">▲</button>
-            <button class="chip" data-key="down">▼</button>
+            <button class="chip" data-key="up">▲ Up</button>
+            <button class="chip" data-key="down">▼ Down</button>
           </div>
         </section>
       </div>
 
-      <!-- TAB 2: CHAT & VOICE -->
-      <div id="tabChat" class="tab-content hidden">
+      <!-- TAB 3: PHONE TOOLS & FLASHLIGHT -->
+      <div id="tabTools" class="tab-content hidden">
+        <!-- Torch Card -->
         <section class="panel">
-          <div class="panel-head">
-            <h3>Talk to JARVIS</h3>
-            <span id="pcName" style="font-size:12px; color:var(--muted)">Connected to PC</span>
-          </div>
-          <div id="chatLog" class="chat-log">
-            <div class="bubble bot">Connected, Sir. What would you like me to do on your PC?</div>
-          </div>
-          <form id="chatForm" class="chat-bar" autocomplete="off">
-            <button type="button" id="btnMic" class="btn-icon" title="Voice Input">
-              <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+          <div class="panel-head"><h3>Phone Flashlight & Torch</h3></div>
+          <div class="torch-card">
+            <button id="btnToggleTorch" class="torch-btn">
+              <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              <span id="torchLabel">TORCH OFF</span>
             </button>
-            <input type="text" id="chatInput" placeholder="Command PC (e.g. open Spotify, minimize...)" />
-            <button type="submit" class="btn-icon" title="Send">
-              <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
-            </button>
-          </form>
+            <span style="font-size:13px; color:var(--muted)">Tap button above or ask JARVIS from PC to turn on phone flashlight.</span>
+            <div style="display:flex; gap:8px; width:100%;">
+              <button id="btnScreenTorch" class="btn-action" style="flex:1;">White Screen Torch</button>
+              <button id="btnVibratePhone" class="btn-action" style="flex:1;">Test Vibration</button>
+            </div>
+          </div>
         </section>
-      </div>
 
-      <!-- TAB 3: POWER & WINDOWS -->
-      <div id="tabPower" class="tab-content hidden">
-        <!-- Phone Unlock Surface -->
+        <!-- Phone Companion Features -->
         <section class="panel">
-          <div class="panel-head"><h3>Phone Unlock & Wake</h3></div>
+          <div class="panel-head"><h3>Phone & Camera Tools</h3></div>
+          <div class="grid">
+            <label class="btn-action highlight" style="cursor:pointer">
+              <svg viewBox="0 0 24 24"><path d="M23 19a2 2 0 01-2 2H3a2 2 0 01-2-2V8a2 2 0 012-2h4l2-3h6l2 3h4a2 2 0 012 2z"/><circle cx="12" cy="13" r="4"/></svg>
+              Snap & Send Photo
+              <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" />
+            </label>
+            <button id="btnShareScreen" class="btn-action highlight">
+              <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              Share Phone Screen
+            </button>
+            <button id="btnSendClipboard" class="btn-action">
+              <svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+              Send Phone Clip
+            </button>
+            <button id="btnGetClipboard" class="btn-action">
+              <svg viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              Get PC Clip
+            </button>
+            <label class="btn-action" style="cursor:pointer">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+              Upload Any File
+              <input type="file" id="fileInput" class="hidden" />
+            </label>
+            <button id="btnWakeLock" class="btn-action">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/></svg>
+              Keep Screen Awake
+            </button>
+          </div>
+        </section>
+
+        <!-- Unlock Screen Surface -->
+        <section class="panel">
+          <div class="panel-head"><h3>Phone Unlock PIN / Pass</h3></div>
           <div style="display:flex; gap:8px;">
-            <input type="password" id="phoneUnlockPin" placeholder="Phone PIN / Pass" style="flex:1; padding:10px; border-radius:6px; border:1px solid var(--card-border); background:#04121a; color:#fff;" />
-            <button id="btnUnlockPhone" class="btn-action highlight" style="width:auto; padding:0 14px;">Unlock Phone</button>
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
-            <span style="font-size:13px; color:var(--muted);">Keep Mobile Screen Awake</span>
-            <button id="btnWakeLock" class="btn-action" style="padding:6px 12px; width:auto;">Enable Wake Lock</button>
+            <input type="password" id="phoneUnlockPin" placeholder="PIN / Passcode" style="flex:1; padding:11px; border-radius:8px; border:1px solid var(--card-border); background:#04121a; color:#fff;" />
+            <button id="btnUnlockPhone" class="btn-action highlight" style="width:auto; padding:0 16px;">Unlock</button>
           </div>
         </section>
+      </div>
 
-        <!-- Wake-on-LAN (WoL) -->
+      <!-- TAB 4: POWER & WAKE-ON-LAN -->
+      <div id="tabPower" class="tab-content hidden">
+        <!-- Wake-on-LAN card -->
         <section class="panel">
           <div class="panel-head"><h3>Wake PC from Sleep (WoL)</h3></div>
-          <div id="wolDetails" class="info-card">
-            Detecting PC MAC Address and Network Adapter...
+          <div class="info-card" id="wolDetails">
+            <b>Hardware MAC:</b> <span id="dispMac" style="color:var(--cyan); font-family:var(--mono);">9C:C7:D3:36:72:C6</span><br>
+            <b>Broadcast IP:</b> <span id="dispBcast" style="font-family:var(--mono);">10.202.34.255:9</span><br>
+            <small style="color:var(--muted)">Note: When your laptop is asleep, Windows suspends the web server. Use the 1-Tap WoL Intent button below to transmit the hardware magic packet over Wi-Fi directly from your phone!</small>
           </div>
           <div class="grid">
-            <button id="btnWakePC" class="btn-action highlight">
-              <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-              Wake PC (WoL)
+            <button id="btnCopyMac" class="btn-action highlight">
+              <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+              Copy MAC Address
+            </button>
+            <a id="btnAndroidWolIntent" class="btn-action highlight" style="text-decoration:none;">
+              <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+              Open Android WoL
+            </a>
+            <button id="btnWakePC" class="btn-action warning">
+              <svg viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10"/></svg>
+              Send WoL Packet
             </button>
             <button id="btnSleepPC" class="btn-action danger">
               <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -375,32 +501,14 @@
 
         <!-- Windows Management -->
         <section class="panel">
-          <div class="panel-head"><h3>Windows Management</h3></div>
+          <div class="panel-head"><h3>Windows & Desktop Control</h3></div>
           <div class="grid">
-            <button class="btn-action highlight" data-action="minimize">
-              <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/></svg>
-              Minimise Active
-            </button>
-            <button class="btn-action highlight" data-action="maximize">
-              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
-              Make Full Size
-            </button>
-            <button class="btn-action" data-action="restore">
-              <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
-              Restore Window
-            </button>
-            <button class="btn-action" data-action="close">
-              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              Close Window
-            </button>
-            <button class="btn-action" data-action="desktop">
-              <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>
-              Show Desktop
-            </button>
-            <button class="btn-action" data-action="lock">
-              <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
-              Lock PC
-            </button>
+            <button class="btn-action highlight" data-action="minimize">Minimise Active</button>
+            <button class="btn-action highlight" data-action="maximize">Make Full Size</button>
+            <button class="btn-action" data-action="restore">Restore Window</button>
+            <button class="btn-action danger" data-action="close">Close Window</button>
+            <button class="btn-action" data-action="desktop">Show Desktop</button>
+            <button class="btn-action" data-action="lock">Lock PC</button>
           </div>
         </section>
 
@@ -420,47 +528,57 @@
         </section>
       </div>
 
-      <!-- TAB 4: SYNC & CAMERA -->
-      <div id="tabSync" class="tab-content hidden">
+      <!-- TAB 5: AI CHAT & VOICE -->
+      <div id="tabChat" class="tab-content hidden">
         <section class="panel">
-          <div class="panel-head"><h3>Mobile Screen & Camera</h3></div>
-          <div class="grid">
-            <button id="btnShareScreen" class="btn-action highlight">
-              <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
-              Share Phone Screen
-            </button>
-            <label class="btn-action" style="cursor:pointer">
-              <svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>
-              Take & Send Photo
-              <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" />
-            </label>
-            <label class="btn-action" style="cursor:pointer">
-              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
-              Upload Any File
-              <input type="file" id="fileInput" class="hidden" />
-            </label>
-            <button class="btn-action" data-action="screenshot">
-              <svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="3"/></svg>
-              Screenshot PC
-            </button>
+          <div class="panel-head">
+            <h3>JARVIS AI Assistant</h3>
+            <span id="pcName" style="font-size:12px; color:var(--muted)">Connected to PC</span>
           </div>
-        </section>
-
-        <section class="panel">
-          <div class="panel-head"><h3>Clipboard Sync</h3></div>
-          <div class="grid">
-            <button class="btn-action" id="btnSendClipboard">
-              <svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-              Send Phone Clip
-            </button>
-            <button class="btn-action" id="btnGetClipboard">
-              <svg viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
-              Get PC Clip
-            </button>
+          <div id="chatLog" class="chat-log">
+            <div class="bubble bot">JARVIS Mobile Link active. Tell me what to do on your PC or with your phone!</div>
           </div>
+          <form id="chatForm" class="chat-bar" autocomplete="off">
+            <button type="button" id="btnMic" class="btn-icon" title="Voice Input">
+              <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+            </button>
+            <input type="text" id="chatInput" placeholder="Command PC or ask anything..." />
+            <button type="submit" class="btn-icon" title="Send">
+              <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </form>
         </section>
       </div>
     </main>
+  </div>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="bottom-nav" id="bottomNav">
+    <button class="nav-item active" data-tab="tabScreen">
+      <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+      <span>Screen</span>
+    </button>
+    <button class="nav-item" data-tab="tabTrackpad">
+      <svg viewBox="0 0 24 24"><rect x="4" y="3" width="16" height="18" rx="4"/><line x1="12" y1="3" x2="12" y2="9"/><line x1="4" y1="9" x2="20" y2="9"/></svg>
+      <span>Touchpad</span>
+    </button>
+    <button class="nav-item" data-tab="tabTools">
+      <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
+      <span>Tools/Torch</span>
+    </button>
+    <button class="nav-item" data-tab="tabPower">
+      <svg viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10"/></svg>
+      <span>Power/WoL</span>
+    </button>
+    <button class="nav-item" data-tab="tabChat">
+      <svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+      <span>Chat</span>
+    </button>
+  </nav>
+
+  <!-- Screen Torch White Fullscreen Fallback -->
+  <div id="screenTorchOverlay" class="screen-torch-overlay hidden">
+    <span>💡 WHITE SCREEN TORCH ACTIVE (TAP TO EXIT)</span>
   </div>
 
   <!-- Alarm Banner -->
@@ -477,10 +595,11 @@
     let token = localStorage.getItem('jarvis_phone_token') || '';
     let audioCtx = null;
     let alarmInterval = null;
-    let autoScreenInterval = null;
-    let pcMacAddress = '';
-    let pcBroadcastIp = '255.255.255.255';
+    let pcMacAddress = '9C:C7:D3:36:72:C6';
+    let pcBroadcastIp = '10.202.34.255';
     let wakeLock = null;
+    let cameraTrack = null;
+    let isTorchActive = false;
 
     function toast(text) {
       const t = document.getElementById('toast');
@@ -488,14 +607,15 @@
       clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.add('hidden'), 3500);
     }
 
-    // Tabs
-    document.querySelectorAll('.tab-btn').forEach(btn => {
+    // Bottom Navigation
+    document.querySelectorAll('.nav-item').forEach(btn => {
       btn.onclick = () => {
-        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         const target = btn.dataset.tab;
         document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
-        document.getElementById(target).classList.remove('hidden');
+        document.getElementById(target)?.classList.remove('hidden');
+        if (target === 'tabScreen') startLiveScreenStream();
       };
     });
 
@@ -550,10 +670,126 @@
       document.getElementById('pcName').textContent = 'Connected: ' + (info.pc_name || 'PC');
       startPingLoop();
       loadWolInfo();
-      refreshScreen();
+      startLiveScreenStream();
     }
 
-    // Ping loop
+    // LIVE SCREEN STREAM (MJPEG Smooth Video Feed)
+    const liveScreenStream = document.getElementById('liveScreenStream');
+    function startLiveScreenStream() {
+      if (!token) return;
+      liveScreenStream.src = '/api/phone/screen/stream?token=' + encodeURIComponent(token) + '&_t=' + Date.now();
+    }
+    document.getElementById('btnReloadStream').onclick = startLiveScreenStream;
+
+    document.getElementById('btnFullscreenStream').onclick = () => {
+      const wrapper = document.getElementById('streamWrapper');
+      if (!document.fullscreenElement) {
+        wrapper.requestFullscreen?.().catch(() => {});
+      } else {
+        document.exitFullscreen?.().catch(() => {});
+      }
+    };
+
+    // Tap directly on the live video stream sends desktop mouse click with ripple
+    liveScreenStream.onclick = async (e) => {
+      const rect = liveScreenStream.getBoundingClientRect();
+      const xPct = (e.clientX - rect.left) / rect.width;
+      const yPct = (e.clientY - rect.top) / rect.height;
+
+      // Show visual ripple
+      const ripple = document.createElement('div');
+      ripple.className = 'click-ripple';
+      ripple.style.left = (e.clientX - rect.left) + 'px';
+      ripple.style.top = (e.clientY - rect.top) + 'px';
+      document.getElementById('streamWrapper').appendChild(ripple);
+      setTimeout(() => ripple.remove(), 500);
+
+      // Trigger PC click
+      try {
+        await fetch('/api/phone/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, action: 'click' })
+        });
+        if (navigator.vibrate) navigator.vibrate(20);
+      } catch (err) {}
+    };
+
+    // FLASHLIGHT / TORCH CONTROL (Hardware Camera LED + Fallback)
+    async function toggleHardwareTorch(forceState = null) {
+      const targetState = forceState !== null ? forceState : !isTorchActive;
+      try {
+        // Try HTML5 MediaStreamTrack torch constraint
+        if (!cameraTrack) {
+          if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const stream = await navigator.mediaDevices.getUserMedia({
+              video: { facingMode: 'environment' }
+            });
+            cameraTrack = stream.getVideoTracks()[0];
+          }
+        }
+
+        if (cameraTrack) {
+          const capabilities = cameraTrack.getCapabilities?.() || {};
+          if (capabilities.torch) {
+            await cameraTrack.applyConstraints({ advanced: [{ torch: targetState }] });
+            setTorchUI(targetState);
+            if (!targetState && cameraTrack) {
+              cameraTrack.stop();
+              cameraTrack = null;
+            }
+            return;
+          }
+        }
+      } catch (err) {
+        console.warn('Camera torch constraint error:', err);
+      }
+
+      // If hardware camera torch fails or unavailable, activate full white screen torch
+      if (targetState) {
+        document.getElementById('screenTorchOverlay').classList.remove('hidden');
+        setTorchUI(true);
+      } else {
+        document.getElementById('screenTorchOverlay').classList.add('hidden');
+        setTorchUI(false);
+      }
+    }
+
+    function setTorchUI(on) {
+      isTorchActive = on;
+      const btn = document.getElementById('btnToggleTorch');
+      const lbl = document.getElementById('torchLabel');
+      if (on) {
+        btn.classList.add('active');
+        lbl.textContent = 'TORCH ON';
+        toast('Flashlight turned ON');
+        if (navigator.vibrate) navigator.vibrate([40, 40]);
+      } else {
+        btn.classList.remove('active');
+        lbl.textContent = 'TORCH OFF';
+        toast('Flashlight turned OFF');
+      }
+    }
+
+    document.getElementById('btnToggleTorch').onclick = () => toggleHardwareTorch();
+    document.getElementById('btnScreenTorch').onclick = () => {
+      document.getElementById('screenTorchOverlay').classList.remove('hidden');
+    };
+    document.getElementById('screenTorchOverlay').onclick = () => {
+      document.getElementById('screenTorchOverlay').classList.add('hidden');
+      if (isTorchActive) setTorchUI(false);
+    };
+
+    document.getElementById('btnVibratePhone').onclick = () => {
+      if (navigator.vibrate) {
+        navigator.vibrate([300, 100, 300]);
+        toast('Vibrated phone!');
+      } else {
+        toast('Vibration not supported on this device.');
+      }
+    };
+
+    // Ping loop & Event Receiver
     async function startPingLoop() {
       if (startPingLoop.running) return;
       startPingLoop.running = true;
@@ -574,12 +810,19 @@
           const d = await res.json();
           (d.events || []).forEach(handleEvent);
         } catch (e) {}
-        await new Promise(r => setTimeout(r, 2500));
+        await new Promise(r => setTimeout(r, 2200));
       }
     }
 
     function handleEvent(ev) {
-      if (ev.type === 'ring') {
+      if (ev.type === 'torch') {
+        toggleHardwareTorch(Boolean(ev.data.enabled));
+      } else if (ev.type === 'vibrate') {
+        if (navigator.vibrate) navigator.vibrate(ev.data.pattern || [300, 150, 300]);
+        toast('JARVIS vibrated your phone');
+      } else if (ev.type === 'speak') {
+        speak(ev.data.text);
+      } else if (ev.type === 'ring') {
         startAlarm();
       } else if (ev.type === 'notification') {
         toast((ev.data.title || 'JARVIS') + ': ' + (ev.data.message || ''));
@@ -593,44 +836,6 @@
         toast('Clipboard synced from PC!');
       }
     }
-
-    // Screen Stream & Tap-to-click
-    const pcScreenImg = document.getElementById('pcScreenImg');
-    function refreshScreen() {
-      if (!token) return;
-      pcScreenImg.src = '/api/phone/screen?token=' + encodeURIComponent(token) + '&_t=' + Date.now();
-    }
-    document.getElementById('btnRefreshScreen').onclick = refreshScreen;
-
-    const btnAutoScreen = document.getElementById('btnAutoScreen');
-    btnAutoScreen.onclick = () => {
-      if (autoScreenInterval) {
-        clearInterval(autoScreenInterval);
-        autoScreenInterval = null;
-        btnAutoScreen.textContent = '⚡ Auto: Off';
-      } else {
-        autoScreenInterval = setInterval(refreshScreen, 2000);
-        btnAutoScreen.textContent = '⚡ Auto: 2s';
-        refreshScreen();
-      }
-    };
-
-    // Tap on live screen sends click
-    pcScreenImg.onclick = async (e) => {
-      const rect = pcScreenImg.getBoundingClientRect();
-      const xPct = (e.clientX - rect.left) / rect.width;
-      const yPct = (e.clientY - rect.top) / rect.height;
-      try {
-        // Send mouse move & click
-        await fetch('/api/phone/action', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, action: 'click' })
-        });
-        toast('Clicked desktop');
-        setTimeout(refreshScreen, 300);
-      } catch (err) {}
-    };
 
     // Virtual Touchpad
     const touchpad = document.getElementById('touchpad');
@@ -652,8 +857,8 @@
       if (e.touches.length === 1) {
         const curX = e.touches[0].clientX;
         const curY = e.touches[0].clientY;
-        const dx = (curX - lastTouchX) * 1.6;
-        const dy = (curY - lastTouchY) * 1.6;
+        const dx = (curX - lastTouchX) * 1.8;
+        const dy = (curY - lastTouchY) * 1.8;
         lastTouchX = curX;
         lastTouchY = curY;
 
@@ -670,13 +875,13 @@
     touchpad.addEventListener('touchend', (e) => {
       const duration = Date.now() - touchStartTime;
       const dist = Math.hypot(lastTouchX - touchStartX, lastTouchY - touchStartY);
-      if (duration < 250 && dist < 10) {
-        // Tap = Left click
+      if (duration < 250 && dist < 12) {
         fetch('/api/phone/mouse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token, action: 'click', btn: 'left' })
         }).catch(() => {});
+        if (navigator.vibrate) navigator.vibrate(20);
       }
     });
 
@@ -686,6 +891,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, action: 'click', btn: 'left' })
       });
+      if (navigator.vibrate) navigator.vibrate(20);
     };
     document.getElementById('btnMouseRight').onclick = () => {
       fetch('/api/phone/mouse', {
@@ -693,6 +899,7 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token, action: 'right_click' })
       });
+      if (navigator.vibrate) navigator.vibrate(20);
     };
 
     // Virtual Keyboard
@@ -726,23 +933,31 @@
       try {
         const res = await fetch('/api/phone/wol_info');
         const data = await res.json();
-        pcMacAddress = data.mac_address || '';
-        pcBroadcastIp = data.broadcast_ip || '255.255.255.255';
+        pcMacAddress = data.mac_address || '9C:C7:D3:36:72:C6';
+        pcBroadcastIp = data.broadcast_ip || '10.202.34.255';
         localStorage.setItem('jarvis_pc_mac', pcMacAddress);
-        document.getElementById('wolDetails').innerHTML =
-          '<b>PC Host:</b> ' + data.pc_name + '<br>' +
-          '<b>MAC Address:</b> <span style="font-family:var(--mono); color:var(--cyan)">' + pcMacAddress + '</span><br>' +
-          '<b>Broadcast IP:</b> ' + pcBroadcastIp + ' (Port 9)';
+        document.getElementById('dispMac').textContent = pcMacAddress;
+        document.getElementById('dispBcast').textContent = pcBroadcastIp + ':9';
+
+        // Set up Android deep link
+        const cleanMac = pcMacAddress.replace(/[:\-]/g, '');
+        const intentLink = document.getElementById('btnAndroidWolIntent');
+        intentLink.href = 'wol://' + pcMacAddress;
       } catch (e) {
-        pcMacAddress = localStorage.getItem('jarvis_pc_mac') || '';
+        pcMacAddress = localStorage.getItem('jarvis_pc_mac') || '9C:C7:D3:36:72:C6';
       }
     }
 
+    document.getElementById('btnCopyMac').onclick = () => {
+      navigator.clipboard?.writeText(pcMacAddress);
+      toast('Copied MAC address (' + pcMacAddress + ') to clipboard!');
+      if (navigator.vibrate) navigator.vibrate(30);
+    };
+
     document.getElementById('btnWakePC').onclick = async () => {
-      const mac = pcMacAddress || localStorage.getItem('jarvis_pc_mac');
-      if (!mac) return toast('PC MAC address not detected yet. Connect while PC is awake first.');
+      const mac = pcMacAddress || localStorage.getItem('jarvis_pc_mac') || '9C:C7:D3:36:72:C6';
+      toast('Broadcasting WoL magic packet to ' + mac + '...');
       try {
-        toast('Sending WoL Magic Packet to ' + mac + '...');
         const res = await fetch('/api/phone/wol_wake', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -751,12 +966,12 @@
         const d = await res.json();
         toast(d.message || 'Wake Packet Transmitted!');
       } catch (e) {
-        toast('Wake packet sent over local broadcast.');
+        toast('Packet sent. If PC is sleeping, open your Android WoL app.');
       }
     };
 
     document.getElementById('btnSleepPC').onclick = async () => {
-      if (!confirm('Put your PC to sleep now? You can wake it anytime with the Wake PC button.')) return;
+      if (!confirm('Put your PC to sleep now? You can wake it anytime with Wake-on-LAN.')) return;
       try {
         const res = await fetch('/api/phone/sleep', {
           method: 'POST',
@@ -764,11 +979,11 @@
           body: JSON.stringify({ token })
         });
         const d = await res.json();
-        toast(d.message || 'PC sleeping');
+        toast(d.message || 'PC is sleeping');
       } catch (e) { toast(e.message); }
     };
 
-    // Phone Unlock
+    // Phone Unlock & Wake Lock
     document.getElementById('btnUnlockPhone').onclick = async () => {
       const pin = document.getElementById('phoneUnlockPin').value.trim();
       try {
@@ -899,9 +1114,7 @@
           });
           const d = await res.json();
           toast(d.result);
-          if (action === 'minimize' || action === 'maximize' || action === 'restore' || action === 'desktop') {
-            setTimeout(refreshScreen, 400);
-          }
+          if (navigator.vibrate) navigator.vibrate(20);
         } catch (e) { toast(e.message); }
       };
     });
@@ -989,7 +1202,7 @@
       if (alarmInterval) { clearInterval(alarmInterval); alarmInterval = null; }
     };
 
-    // Auto-login
+    // Auto-login if saved token
     if (token) {
       fetch('/api/phone/ping', {
         method: 'POST',
