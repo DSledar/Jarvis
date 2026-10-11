@@ -1,0 +1,1005 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>JARVIS Mobile Commander</title>
+  <style>
+    :root {
+      --bg: #030a0f;
+      --card: #071720;
+      --card-border: #0f394a;
+      --cyan: #3fe6ff;
+      --cyan-dim: #187d91;
+      --amber: #ffb54a;
+      --red: #ff6b57;
+      --green: #53f2a1;
+      --text: #e8f8fc;
+      --muted: #8db0bb;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI Variable", "Segoe UI", Roboto, sans-serif;
+      --mono: "Cascadia Mono", Consolas, monospace;
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    html, body { margin: 0; padding: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 15px/1.4 var(--font); }
+    body {
+      background: radial-gradient(circle at 50% 0%, #0b2f3f 0%, var(--bg) 75%);
+      display: flex; flex-direction: column; min-height: 100vh;
+    }
+    .hidden { display: none !important; }
+
+    /* Header */
+    header {
+      padding: 10px 14px; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--card-border); background: rgba(4, 15, 22, 0.92);
+      backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 30;
+    }
+    .brand { display: flex; align-items: center; gap: 8px; }
+    .mark {
+      width: 26px; height: 26px; border-radius: 50%; border: 2px solid var(--cyan);
+      box-shadow: 0 0 10px var(--cyan); display: flex; align-items: center; justify-content: center;
+    }
+    .mark::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--cyan); }
+    .title { font-weight: 700; font-size: 16px; letter-spacing: 0.08em; color: #fff; }
+    .status-badge {
+      display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+      padding: 4px 8px; border-radius: 12px; background: rgba(83, 242, 161, 0.12);
+      border: 1px solid var(--green); color: var(--green);
+    }
+    .status-badge.bad { background: rgba(255, 107, 87, 0.12); border-color: var(--red); color: var(--red); }
+    .status-badge i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+    /* Nav Tabs */
+    .tab-bar {
+      display: flex; background: #04121a; border-bottom: 1px solid var(--card-border);
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+    }
+    .tab-btn {
+      flex: 1; min-width: 80px; padding: 10px 6px; border: none; background: transparent;
+      color: var(--muted); font-size: 12px; font-weight: 600; text-align: center; cursor: pointer;
+      border-bottom: 2px solid transparent; white-space: nowrap; transition: all 0.2s;
+    }
+    .tab-btn.active { color: var(--cyan); border-bottom-color: var(--cyan); background: rgba(63, 230, 255, 0.06); }
+
+    /* Auth Screen */
+    .auth-box {
+      flex: 1; display: flex; flex-direction: column; justify-content: center; align-items: center;
+      padding: 24px; text-align: center; gap: 16px;
+    }
+    .lock-orb {
+      width: 80px; height: 80px; border-radius: 50%; border: 2px dashed var(--cyan);
+      display: flex; align-items: center; justify-content: center; margin-bottom: 6px;
+      box-shadow: 0 0 25px rgba(63, 230, 255, 0.25);
+    }
+    .lock-orb svg { width: 38px; height: 38px; stroke: var(--cyan); fill: none; stroke-width: 2; }
+    .auth-box h2 { margin: 0; font-size: 22px; font-weight: 600; }
+    .auth-box p { margin: 0; color: var(--muted); font-size: 13.5px; max-width: 300px; }
+    .pass-input {
+      width: 100%; max-width: 280px; padding: 12px 16px; font-size: 18px; text-align: center;
+      letter-spacing: 0.2em; border-radius: 6px; border: 1px solid var(--cyan-dim);
+      background: #04141d; color: #fff; font-family: var(--mono); outline: none;
+    }
+    .pass-input:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(63, 230, 255, 0.4); }
+    .btn-connect {
+      width: 100%; max-width: 280px; padding: 13px; border-radius: 6px; font-size: 15px;
+      font-weight: 700; background: var(--cyan); color: #00222a; border: none; cursor: pointer;
+    }
+    .btn-connect:active { filter: brightness(0.9); }
+
+    /* Main Container */
+    main { flex: 1; padding: 12px; display: flex; flex-direction: column; gap: 12px; max-width: 650px; margin: 0 auto; width: 100%; }
+
+    /* Panels */
+    .panel {
+      background: var(--card); border: 1px solid var(--card-border); border-radius: 8px;
+      padding: 12px; display: flex; flex-direction: column; gap: 10px;
+    }
+    .panel-head { display: flex; align-items: center; justify-content: space-between; }
+    .panel-head h3 { margin: 0; font-size: 14px; font-weight: 600; color: #fff; text-transform: uppercase; letter-spacing: 0.05em; }
+
+    /* PC Live Screen */
+    .screen-container {
+      position: relative; width: 100%; border-radius: 6px; overflow: hidden;
+      border: 1px solid var(--cyan-dim); background: #000;
+    }
+    .screen-img {
+      width: 100%; height: auto; display: block; object-fit: contain; cursor: crosshair;
+    }
+    .screen-overlay-btn {
+      position: absolute; top: 6px; right: 6px; padding: 4px 8px; font-size: 11px;
+      border-radius: 4px; background: rgba(0,0,0,0.7); border: 1px solid var(--cyan);
+      color: var(--cyan); cursor: pointer;
+    }
+
+    /* Virtual Touchpad */
+    .touchpad-box {
+      width: 100%; height: 190px; border-radius: 8px; border: 2px dashed var(--cyan-dim);
+      background: radial-gradient(circle at 50% 50%, #071f2c 0%, #030d13 100%);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      user-select: none; touch-action: none; position: relative;
+    }
+    .touchpad-box:active { border-color: var(--cyan); box-shadow: inset 0 0 20px rgba(63, 230, 255, 0.15); }
+    .touchpad-hint { color: var(--muted); font-size: 12px; pointer-events: none; text-align: center; }
+
+    .mouse-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .mouse-btn {
+      padding: 11px; border-radius: 6px; border: 1px solid var(--card-border);
+      background: #061922; color: #fff; font-weight: 600; font-size: 13.5px; cursor: pointer;
+      text-align: center;
+    }
+    .mouse-btn:active { background: rgba(63, 230, 255, 0.2); border-color: var(--cyan); }
+
+    /* Keyboard input & shortcuts */
+    .key-bar { display: flex; gap: 6px; }
+    .key-bar input {
+      flex: 1; padding: 10px 12px; border-radius: 6px; border: 1px solid var(--card-border);
+      background: #04121a; color: #fff; font-size: 14px; outline: none;
+    }
+    .key-bar input:focus { border-color: var(--cyan); }
+    .btn-key-send {
+      padding: 0 14px; border-radius: 6px; background: var(--cyan); color: #00222a;
+      border: none; font-weight: 700; font-size: 13px; cursor: pointer;
+    }
+    .shortcut-chips { display: flex; flex-wrap: wrap; gap: 5px; }
+    .chip {
+      padding: 6px 9px; border-radius: 4px; font-size: 12px; font-weight: 600;
+      background: #08202d; border: 1px solid var(--card-border); color: #bde9f5; cursor: pointer;
+    }
+    .chip:active { border-color: var(--cyan); color: #fff; background: rgba(63, 230, 255, 0.15); }
+
+    /* Action Grid */
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
+    .btn-action {
+      padding: 11px 8px; border-radius: 6px; border: 1px solid var(--card-border);
+      background: #061822; color: #cbe7ee; font-size: 13.5px; font-weight: 500;
+      display: flex; align-items: center; justify-content: center; gap: 7px; cursor: pointer;
+      text-align: center;
+    }
+    .btn-action:active { background: rgba(63, 230, 255, 0.15); border-color: var(--cyan); }
+    .btn-action svg { width: 17px; height: 17px; stroke: var(--cyan); fill: none; stroke-width: 2; flex-shrink: 0; }
+    .btn-action.highlight { border-color: var(--cyan-dim); color: #fff; font-weight: 600; }
+    .btn-action.danger { border-color: #83271d; color: #ff9182; }
+
+    /* Media row */
+    .media-row { display: flex; justify-content: space-between; gap: 6px; }
+    .media-row button {
+      flex: 1; padding: 11px 4px; border-radius: 6px; border: 1px solid var(--card-border);
+      background: #061822; color: #fff; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    }
+    .media-row button:active { border-color: var(--cyan); }
+
+    /* Chat Section */
+    .chat-log {
+      max-height: 240px; min-height: 120px; overflow-y: auto; display: flex; flex-direction: column;
+      gap: 8px; padding: 4px;
+    }
+    .bubble {
+      padding: 8px 11px; border-radius: 6px; font-size: 14px; max-width: 90%;
+      word-break: break-word; line-height: 1.4;
+    }
+    .bubble.user { align-self: flex-end; background: #0c2d3a; border: 1px solid var(--cyan-dim); color: #fff; }
+    .bubble.bot { align-self: flex-start; background: #061922; border-left: 3px solid var(--cyan); color: var(--text); }
+    .bubble.err { border-left-color: var(--red); color: #ffb4a6; }
+
+    .chat-bar { display: flex; gap: 6px; }
+    .chat-bar input {
+      flex: 1; padding: 11px 13px; border-radius: 6px; border: 1px solid var(--card-border);
+      background: #04121a; color: #fff; font-size: 14px; outline: none;
+    }
+    .chat-bar input:focus { border-color: var(--cyan); }
+    .btn-icon {
+      width: 44px; height: 44px; border-radius: 6px; border: 1px solid var(--cyan-dim);
+      background: #061e29; color: var(--cyan); display: flex; align-items: center; justify-content: center;
+      cursor: pointer; flex-shrink: 0;
+    }
+    .btn-icon svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2; }
+    .btn-icon.live { background: var(--cyan); color: #00222a; animation: pulse 1s infinite; }
+
+    /* Info card */
+    .info-card {
+      padding: 10px; border-radius: 6px; background: rgba(63, 230, 255, 0.05);
+      border: 1px solid var(--cyan-dim); font-size: 13px; color: var(--text);
+    }
+    .info-card b { color: var(--cyan); }
+
+    /* Alarm Banner */
+    .alarm-banner {
+      position: fixed; inset: 0; z-index: 100; background: rgba(255, 107, 87, 0.95);
+      color: #fff; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; padding: 24px; text-align: center; animation: alarmFlash 0.6s infinite alternate;
+    }
+    .alarm-banner h1 { margin: 0; font-size: 28px; }
+    .btn-dismiss {
+      padding: 13px 26px; border-radius: 8px; font-size: 17px; font-weight: 700;
+      background: #fff; color: #c0230d; border: none; cursor: pointer;
+    }
+    @keyframes alarmFlash {
+      from { background: rgba(220, 40, 20, 0.95); }
+      to { background: rgba(140, 20, 10, 0.95); }
+    }
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+      padding: 9px 16px; border-radius: 20px; font-size: 13.5px; background: #082430;
+      border: 1px solid var(--cyan); color: #fff; z-index: 50; box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+      max-width: 90%; text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="brand">
+      <div class="mark"></div>
+      <div class="title">JARVIS LINK</div>
+    </div>
+    <div id="connStatus" class="status-badge bad"><i></i><span>Disconnected</span></div>
+  </header>
+
+  <!-- Passcode Unlock Screen -->
+  <div id="authScreen" class="auth-box">
+    <div class="lock-orb">
+      <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
+    </div>
+    <h2>JARVIS Mobile Commander</h2>
+    <p>Enter the access passcode to control your PC remotely, wake it from sleep, and stream display.</p>
+    <input type="password" id="passInput" class="pass-input" placeholder="PASSCODE" autocomplete="off" />
+    <button id="btnConnect" class="btn-connect">Connect to JARVIS</button>
+  </div>
+
+  <!-- Connected Screen -->
+  <div id="mainScreen" class="hidden" style="display:flex; flex-direction:column; flex:1;">
+    <!-- Navigation Tabs -->
+    <nav class="tab-bar">
+      <button class="tab-btn active" data-tab="tabRemote">🖱️ Remote & Screen</button>
+      <button class="tab-btn" data-tab="tabChat">💬 Voice & Chat</button>
+      <button class="tab-btn" data-tab="tabPower">⚡ Power & Windows</button>
+      <button class="tab-btn" data-tab="tabSync">📱 Sync & Camera</button>
+    </nav>
+
+    <main>
+      <!-- TAB 1: REMOTE & SCREEN -->
+      <div id="tabRemote" class="tab-content">
+        <!-- Live PC Display -->
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Live PC Screen View</h3>
+            <div style="display:flex; gap:6px;">
+              <button id="btnRefreshScreen" class="screen-overlay-btn" style="position:static;">🔄 Refresh</button>
+              <button id="btnAutoScreen" class="screen-overlay-btn" style="position:static;">⚡ Auto: Off</button>
+            </div>
+          </div>
+          <div class="screen-container">
+            <img id="pcScreenImg" class="screen-img" src="/api/phone/screen" alt="PC Screen" />
+          </div>
+          <span style="font-size:11.5px; color:var(--muted)">Tap anywhere on screen above to click that exact position on PC!</span>
+        </section>
+
+        <!-- Touchpad & Mouse -->
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Virtual Touchpad</h3>
+            <span style="font-size:11.5px; color:var(--cyan)">Tap=Click | 2-Finger=Right-Click</span>
+          </div>
+          <div id="touchpad" class="touchpad-box">
+            <span class="touchpad-hint">Drag finger here to move PC cursor<br>Tap to click • Double tap to double-click</span>
+          </div>
+          <div class="mouse-btns">
+            <button class="mouse-btn" id="btnMouseLeft">Left Click</button>
+            <button class="mouse-btn" id="btnMouseRight">Right Click</button>
+          </div>
+        </section>
+
+        <!-- Virtual Keyboard & Shortcuts -->
+        <section class="panel">
+          <div class="panel-head"><h3>PC Keyboard & Shortcuts</h3></div>
+          <div class="key-bar">
+            <input type="text" id="keyInput" placeholder="Type text to send to PC..." autocomplete="off" />
+            <button id="btnSendKeys" class="btn-key-send">Type on PC</button>
+          </div>
+          <div class="shortcut-chips">
+            <button class="chip" data-key="win">Win Key</button>
+            <button class="chip" data-key="enter">Enter</button>
+            <button class="chip" data-key="backspace">Backspace</button>
+            <button class="chip" data-key="esc">Esc</button>
+            <button class="chip" data-key="alt+tab">Alt+Tab</button>
+            <button class="chip" data-key="ctrl+c">Ctrl+C</button>
+            <button class="chip" data-key="ctrl+v">Ctrl+V</button>
+            <button class="chip" data-key="win+d">Desktop (Win+D)</button>
+            <button class="chip" data-key="win+l">Lock (Win+L)</button>
+            <button class="chip" data-key="space">Space</button>
+            <button class="chip" data-key="up">▲</button>
+            <button class="chip" data-key="down">▼</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 2: CHAT & VOICE -->
+      <div id="tabChat" class="tab-content hidden">
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Talk to JARVIS</h3>
+            <span id="pcName" style="font-size:12px; color:var(--muted)">Connected to PC</span>
+          </div>
+          <div id="chatLog" class="chat-log">
+            <div class="bubble bot">Connected, Sir. What would you like me to do on your PC?</div>
+          </div>
+          <form id="chatForm" class="chat-bar" autocomplete="off">
+            <button type="button" id="btnMic" class="btn-icon" title="Voice Input">
+              <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></svg>
+            </button>
+            <input type="text" id="chatInput" placeholder="Command PC (e.g. open Spotify, minimize...)" />
+            <button type="submit" class="btn-icon" title="Send">
+              <svg viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+            </button>
+          </form>
+        </section>
+      </div>
+
+      <!-- TAB 3: POWER & WINDOWS -->
+      <div id="tabPower" class="tab-content hidden">
+        <!-- Phone Unlock Surface -->
+        <section class="panel">
+          <div class="panel-head"><h3>Phone Unlock & Wake</h3></div>
+          <div style="display:flex; gap:8px;">
+            <input type="password" id="phoneUnlockPin" placeholder="Phone PIN / Pass" style="flex:1; padding:10px; border-radius:6px; border:1px solid var(--card-border); background:#04121a; color:#fff;" />
+            <button id="btnUnlockPhone" class="btn-action highlight" style="width:auto; padding:0 14px;">Unlock Phone</button>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-top:4px;">
+            <span style="font-size:13px; color:var(--muted);">Keep Mobile Screen Awake</span>
+            <button id="btnWakeLock" class="btn-action" style="padding:6px 12px; width:auto;">Enable Wake Lock</button>
+          </div>
+        </section>
+
+        <!-- Wake-on-LAN (WoL) -->
+        <section class="panel">
+          <div class="panel-head"><h3>Wake PC from Sleep (WoL)</h3></div>
+          <div id="wolDetails" class="info-card">
+            Detecting PC MAC Address and Network Adapter...
+          </div>
+          <div class="grid">
+            <button id="btnWakePC" class="btn-action highlight">
+              <svg viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+              Wake PC (WoL)
+            </button>
+            <button id="btnSleepPC" class="btn-action danger">
+              <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+              Put PC to Sleep
+            </button>
+          </div>
+        </section>
+
+        <!-- Windows Management -->
+        <section class="panel">
+          <div class="panel-head"><h3>Windows Management</h3></div>
+          <div class="grid">
+            <button class="btn-action highlight" data-action="minimize">
+              <svg viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/></svg>
+              Minimise Active
+            </button>
+            <button class="btn-action highlight" data-action="maximize">
+              <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>
+              Make Full Size
+            </button>
+            <button class="btn-action" data-action="restore">
+              <svg viewBox="0 0 24 24"><rect x="5" y="5" width="14" height="14" rx="2"/></svg>
+              Restore Window
+            </button>
+            <button class="btn-action" data-action="close">
+              <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              Close Window
+            </button>
+            <button class="btn-action" data-action="desktop">
+              <svg viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></svg>
+              Show Desktop
+            </button>
+            <button class="btn-action" data-action="lock">
+              <svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></svg>
+              Lock PC
+            </button>
+          </div>
+        </section>
+
+        <!-- Media Controls -->
+        <section class="panel">
+          <div class="panel-head"><h3>PC Volume & Media</h3></div>
+          <div class="media-row">
+            <button data-action="previous">⏮ Prev</button>
+            <button data-action="play_pause">⏯ Play/Pause</button>
+            <button data-action="next">⏭ Next</button>
+          </div>
+          <div class="media-row">
+            <button data-action="volume_down">🔉 Vol -</button>
+            <button data-action="mute">🔇 Mute</button>
+            <button data-action="volume_up">🔊 Vol +</button>
+          </div>
+        </section>
+      </div>
+
+      <!-- TAB 4: SYNC & CAMERA -->
+      <div id="tabSync" class="tab-content hidden">
+        <section class="panel">
+          <div class="panel-head"><h3>Mobile Screen & Camera</h3></div>
+          <div class="grid">
+            <button id="btnShareScreen" class="btn-action highlight">
+              <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              Share Phone Screen
+            </button>
+            <label class="btn-action" style="cursor:pointer">
+              <svg viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></svg>
+              Take & Send Photo
+              <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" />
+            </label>
+            <label class="btn-action" style="cursor:pointer">
+              <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+              Upload Any File
+              <input type="file" id="fileInput" class="hidden" />
+            </label>
+            <button class="btn-action" data-action="screenshot">
+              <svg viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="3"/></svg>
+              Screenshot PC
+            </button>
+          </div>
+        </section>
+
+        <section class="panel">
+          <div class="panel-head"><h3>Clipboard Sync</h3></div>
+          <div class="grid">
+            <button class="btn-action" id="btnSendClipboard">
+              <svg viewBox="0 0 24 24"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+              Send Phone Clip
+            </button>
+            <button class="btn-action" id="btnGetClipboard">
+              <svg viewBox="0 0 24 24"><path d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+              Get PC Clip
+            </button>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Alarm Banner -->
+  <div id="alarmModal" class="alarm-banner hidden">
+    <h1>🚨 JARVIS LOCATING PHONE</h1>
+    <p>Your PC requested to find / ring this phone!</p>
+    <button id="btnDismissAlarm" class="btn-dismiss">I Found My Phone</button>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script>
+    'use strict';
+    let token = localStorage.getItem('jarvis_phone_token') || '';
+    let audioCtx = null;
+    let alarmInterval = null;
+    let autoScreenInterval = null;
+    let pcMacAddress = '';
+    let pcBroadcastIp = '255.255.255.255';
+    let wakeLock = null;
+
+    function toast(text) {
+      const t = document.getElementById('toast');
+      t.textContent = text; t.classList.remove('hidden');
+      clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.add('hidden'), 3500);
+    }
+
+    // Tabs
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        const target = btn.dataset.tab;
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.add('hidden'));
+        document.getElementById(target).classList.remove('hidden');
+      };
+    });
+
+    async function getBatteryPercent() {
+      try {
+        if (navigator.getBattery) {
+          const b = await navigator.getBattery();
+          return Math.round(b.level * 100);
+        }
+      } catch (e) {}
+      return null;
+    }
+
+    function getDeviceModel() {
+      const ua = navigator.userAgent;
+      if (/iPhone/.test(ua)) return 'iPhone';
+      if (/iPad/.test(ua)) return 'iPad';
+      if (/Android/.test(ua)) {
+        const m = ua.match(/;\s*([^;]+)\s+Build\//);
+        return m ? m[1] : 'Android Device';
+      }
+      return 'Mobile Device';
+    }
+
+    // Connect / Auth
+    document.getElementById('btnConnect').onclick = async () => {
+      const pwd = document.getElementById('passInput').value.trim();
+      if (!pwd) return toast('Please enter the passcode.');
+      try {
+        const bat = await getBatteryPercent();
+        const res = await fetch('/api/phone/auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pwd, device_name: getDeviceModel(), battery: bat })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || 'Incorrect passcode');
+        token = data.token;
+        localStorage.setItem('jarvis_phone_token', token);
+        onAuthenticated(data);
+      } catch (err) {
+        toast(err.message);
+      }
+    };
+
+    function onAuthenticated(info) {
+      document.getElementById('authScreen').classList.add('hidden');
+      document.getElementById('mainScreen').classList.remove('hidden');
+      const badge = document.getElementById('connStatus');
+      badge.className = 'status-badge';
+      badge.innerHTML = '<i></i><span>Connected to ' + (info.pc_name || 'PC') + '</span>';
+      document.getElementById('pcName').textContent = 'Connected: ' + (info.pc_name || 'PC');
+      startPingLoop();
+      loadWolInfo();
+      refreshScreen();
+    }
+
+    // Ping loop
+    async function startPingLoop() {
+      if (startPingLoop.running) return;
+      startPingLoop.running = true;
+      while (token) {
+        try {
+          const bat = await getBatteryPercent();
+          const res = await fetch('/api/phone/ping', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, battery: bat, device_name: getDeviceModel() })
+          });
+          if (res.status === 401) {
+            token = '';
+            localStorage.removeItem('jarvis_phone_token');
+            location.reload();
+            break;
+          }
+          const d = await res.json();
+          (d.events || []).forEach(handleEvent);
+        } catch (e) {}
+        await new Promise(r => setTimeout(r, 2500));
+      }
+    }
+
+    function handleEvent(ev) {
+      if (ev.type === 'ring') {
+        startAlarm();
+      } else if (ev.type === 'notification') {
+        toast((ev.data.title || 'JARVIS') + ': ' + (ev.data.message || ''));
+        if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+      } else if (ev.type === 'wake_and_unlock') {
+        toast('JARVIS: ' + (ev.data.message || 'Screen Wake Activated'));
+        enableWakeLock();
+        if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
+      } else if (ev.type === 'clipboard' && ev.data.text) {
+        navigator.clipboard?.writeText(ev.data.text).catch(() => {});
+        toast('Clipboard synced from PC!');
+      }
+    }
+
+    // Screen Stream & Tap-to-click
+    const pcScreenImg = document.getElementById('pcScreenImg');
+    function refreshScreen() {
+      if (!token) return;
+      pcScreenImg.src = '/api/phone/screen?token=' + encodeURIComponent(token) + '&_t=' + Date.now();
+    }
+    document.getElementById('btnRefreshScreen').onclick = refreshScreen;
+
+    const btnAutoScreen = document.getElementById('btnAutoScreen');
+    btnAutoScreen.onclick = () => {
+      if (autoScreenInterval) {
+        clearInterval(autoScreenInterval);
+        autoScreenInterval = null;
+        btnAutoScreen.textContent = '⚡ Auto: Off';
+      } else {
+        autoScreenInterval = setInterval(refreshScreen, 2000);
+        btnAutoScreen.textContent = '⚡ Auto: 2s';
+        refreshScreen();
+      }
+    };
+
+    // Tap on live screen sends click
+    pcScreenImg.onclick = async (e) => {
+      const rect = pcScreenImg.getBoundingClientRect();
+      const xPct = (e.clientX - rect.left) / rect.width;
+      const yPct = (e.clientY - rect.top) / rect.height;
+      try {
+        // Send mouse move & click
+        await fetch('/api/phone/action', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, action: 'click' })
+        });
+        toast('Clicked desktop');
+        setTimeout(refreshScreen, 300);
+      } catch (err) {}
+    };
+
+    // Virtual Touchpad
+    const touchpad = document.getElementById('touchpad');
+    let touchStartX = 0, touchStartY = 0, lastTouchX = 0, lastTouchY = 0;
+    let touchStartTime = 0;
+
+    touchpad.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 1) {
+        touchStartX = e.touches[0].clientX;
+        touchStartY = e.touches[0].clientY;
+        lastTouchX = touchStartX;
+        lastTouchY = touchStartY;
+        touchStartTime = Date.now();
+      }
+    }, { passive: false });
+
+    touchpad.addEventListener('touchmove', async (e) => {
+      e.preventDefault();
+      if (e.touches.length === 1) {
+        const curX = e.touches[0].clientX;
+        const curY = e.touches[0].clientY;
+        const dx = (curX - lastTouchX) * 1.6;
+        const dy = (curY - lastTouchY) * 1.6;
+        lastTouchX = curX;
+        lastTouchY = curY;
+
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          fetch('/api/phone/mouse', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, action: 'move', dx, dy })
+          }).catch(() => {});
+        }
+      }
+    }, { passive: false });
+
+    touchpad.addEventListener('touchend', (e) => {
+      const duration = Date.now() - touchStartTime;
+      const dist = Math.hypot(lastTouchX - touchStartX, lastTouchY - touchStartY);
+      if (duration < 250 && dist < 10) {
+        // Tap = Left click
+        fetch('/api/phone/mouse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, action: 'click', btn: 'left' })
+        }).catch(() => {});
+      }
+    });
+
+    document.getElementById('btnMouseLeft').onclick = () => {
+      fetch('/api/phone/mouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, action: 'click', btn: 'left' })
+      });
+    };
+    document.getElementById('btnMouseRight').onclick = () => {
+      fetch('/api/phone/mouse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, action: 'right_click' })
+      });
+    };
+
+    // Virtual Keyboard
+    document.getElementById('btnSendKeys').onclick = async () => {
+      const inp = document.getElementById('keyInput');
+      const val = inp.value;
+      if (!val) return;
+      await fetch('/api/phone/keyboard', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, text: val })
+      });
+      inp.value = '';
+      toast('Sent text to PC');
+    };
+
+    document.querySelectorAll('.chip[data-key]').forEach(chip => {
+      chip.onclick = async () => {
+        const key = chip.dataset.key;
+        await fetch('/api/phone/keyboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, key })
+        });
+        toast('Sent key: ' + key);
+      };
+    });
+
+    // WoL & Sleep
+    async function loadWolInfo() {
+      try {
+        const res = await fetch('/api/phone/wol_info');
+        const data = await res.json();
+        pcMacAddress = data.mac_address || '';
+        pcBroadcastIp = data.broadcast_ip || '255.255.255.255';
+        localStorage.setItem('jarvis_pc_mac', pcMacAddress);
+        document.getElementById('wolDetails').innerHTML =
+          '<b>PC Host:</b> ' + data.pc_name + '<br>' +
+          '<b>MAC Address:</b> <span style="font-family:var(--mono); color:var(--cyan)">' + pcMacAddress + '</span><br>' +
+          '<b>Broadcast IP:</b> ' + pcBroadcastIp + ' (Port 9)';
+      } catch (e) {
+        pcMacAddress = localStorage.getItem('jarvis_pc_mac') || '';
+      }
+    }
+
+    document.getElementById('btnWakePC').onclick = async () => {
+      const mac = pcMacAddress || localStorage.getItem('jarvis_pc_mac');
+      if (!mac) return toast('PC MAC address not detected yet. Connect while PC is awake first.');
+      try {
+        toast('Sending WoL Magic Packet to ' + mac + '...');
+        const res = await fetch('/api/phone/wol_wake', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mac, broadcast: pcBroadcastIp })
+        });
+        const d = await res.json();
+        toast(d.message || 'Wake Packet Transmitted!');
+      } catch (e) {
+        toast('Wake packet sent over local broadcast.');
+      }
+    };
+
+    document.getElementById('btnSleepPC').onclick = async () => {
+      if (!confirm('Put your PC to sleep now? You can wake it anytime with the Wake PC button.')) return;
+      try {
+        const res = await fetch('/api/phone/sleep', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const d = await res.json();
+        toast(d.message || 'PC sleeping');
+      } catch (e) { toast(e.message); }
+    };
+
+    // Phone Unlock
+    document.getElementById('btnUnlockPhone').onclick = async () => {
+      const pin = document.getElementById('phoneUnlockPin').value.trim();
+      try {
+        const res = await fetch('/api/phone/unlock', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, pin })
+        });
+        const d = await res.json();
+        toast(d.message || 'Phone unlock signal sent.');
+        enableWakeLock();
+      } catch (e) { toast(e.message); }
+    };
+
+    async function enableWakeLock() {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          document.getElementById('btnWakeLock').textContent = 'Wake Lock Active';
+          toast('Screen Wake Lock active: Display will stay on.');
+        }
+      } catch (e) {}
+    }
+    document.getElementById('btnWakeLock').onclick = enableWakeLock;
+
+    // Mobile Screen Sharing
+    document.getElementById('btnShareScreen').onclick = async () => {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+          return toast('Screen sharing requires browser support or HTTPS tunnel.');
+        }
+        toast('Starting mobile screen share...');
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.play();
+        video.onloadedmetadata = () => {
+          setTimeout(async () => {
+            const canvas = document.createElement('canvas');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(video, 0, 0);
+            const b64 = canvas.toDataURL('image/png');
+            stream.getTracks().forEach(t => t.stop());
+            await fetch('/api/phone/screen_upload', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ token, image: b64 })
+            });
+            toast('Mobile screen snapshot sent to JARVIS!');
+          }, 600);
+        };
+      } catch (err) {
+        toast('Could not share screen: ' + err.message);
+      }
+    };
+
+    // Chat
+    const chatLog = document.getElementById('chatLog');
+    function addChat(text, role, isErr = false) {
+      const b = document.createElement('div');
+      b.className = 'bubble ' + role + (isErr ? ' err' : '');
+      b.textContent = text;
+      chatLog.append(b);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    document.getElementById('chatForm').onsubmit = async (e) => {
+      e.preventDefault();
+      const inp = document.getElementById('chatInput');
+      const msg = inp.value.trim();
+      if (!msg) return;
+      inp.value = '';
+      addChat(msg, 'user');
+      try {
+        const res = await fetch('/api/phone/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, message: msg })
+        });
+        const d = await res.json();
+        addChat(d.text, 'bot', d.error);
+        speak(d.text);
+      } catch (err) {
+        addChat('Failed: ' + err.message, 'bot', true);
+      }
+    };
+
+    function speak(text) {
+      if (!window.speechSynthesis || !text) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      speechSynthesis.speak(u);
+    }
+
+    // Voice recognition
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const btnMic = document.getElementById('btnMic');
+    if (SR) {
+      const rec = new SR();
+      rec.continuous = false;
+      rec.onstart = () => btnMic.classList.add('live');
+      rec.onend = () => btnMic.classList.remove('live');
+      rec.onresult = (e) => {
+        const t = e.results[0][0].transcript;
+        if (t) {
+          document.getElementById('chatInput').value = t;
+          document.getElementById('chatForm').dispatchEvent(new Event('submit'));
+        }
+      };
+      btnMic.onclick = () => {
+        try { rec.start(); } catch (e) { rec.stop(); }
+      };
+    } else {
+      btnMic.onclick = () => toast('Voice input not supported in this mobile browser.');
+    }
+
+    // Actions
+    document.querySelectorAll('[data-action]').forEach(btn => {
+      btn.onclick = async () => {
+        const action = btn.dataset.action;
+        try {
+          const res = await fetch('/api/phone/action', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, action })
+          });
+          const d = await res.json();
+          toast(d.result);
+          if (action === 'minimize' || action === 'maximize' || action === 'restore' || action === 'desktop') {
+            setTimeout(refreshScreen, 400);
+          }
+        } catch (e) { toast(e.message); }
+      };
+    });
+
+    // File / Photo uploads
+    async function uploadBlob(file) {
+      toast('Reading ' + file.name + '...');
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const b64 = reader.result.split(',')[1];
+          toast('Uploading ' + file.name + ' to PC...');
+          const res = await fetch('/api/phone/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token, filename: file.name, data: b64 })
+          });
+          const d = await res.json();
+          if (d.ok) toast('Saved to PC: ' + d.saved_path);
+          else throw new Error(d.detail || 'Upload failed');
+        } catch (e) { toast(e.message); }
+      };
+      reader.readAsDataURL(file);
+    }
+    document.getElementById('photoInput').onchange = (e) => {
+      if (e.target.files[0]) uploadBlob(e.target.files[0]);
+    };
+    document.getElementById('fileInput').onchange = (e) => {
+      if (e.target.files[0]) uploadBlob(e.target.files[0]);
+    };
+
+    // Clipboard
+    document.getElementById('btnSendClipboard').onclick = async () => {
+      try {
+        const t = await navigator.clipboard.readText();
+        if (!t) return toast('Clipboard is empty.');
+        const res = await fetch('/api/phone/clipboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, text: t, direction: 'to_pc' })
+        });
+        const d = await res.json();
+        toast(d.message);
+      } catch (e) { toast('Could not read clipboard. Grant clipboard permission.'); }
+    };
+    document.getElementById('btnGetClipboard').onclick = async () => {
+      try {
+        const res = await fetch('/api/phone/clipboard', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, direction: 'to_phone' })
+        });
+        const d = await res.json();
+        if (d.text) {
+          await navigator.clipboard.writeText(d.text);
+          toast('Copied PC clipboard to phone!');
+        } else {
+          toast('PC clipboard is empty.');
+        }
+      } catch (e) { toast(e.message); }
+    };
+
+    // Alarm
+    function startAlarm() {
+      document.getElementById('alarmModal').classList.remove('hidden');
+      if (navigator.vibrate) navigator.vibrate([500, 200, 500, 200, 500]);
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (alarmInterval) clearInterval(alarmInterval);
+        alarmInterval = setInterval(() => {
+          if (!audioCtx) return;
+          const osc = audioCtx.createOscillator();
+          const gain = audioCtx.createGain();
+          osc.connect(gain); gain.connect(audioCtx.destination);
+          osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(1760, audioCtx.currentTime + 0.3);
+          gain.gain.setValueAtTime(0.7, audioCtx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.35);
+          osc.start(); osc.stop(audioCtx.currentTime + 0.35);
+        }, 400);
+      } catch (e) {}
+    }
+    document.getElementById('btnDismissAlarm').onclick = () => {
+      document.getElementById('alarmModal').classList.add('hidden');
+      if (alarmInterval) { clearInterval(alarmInterval); alarmInterval = null; }
+    };
+
+    // Auto-login
+    if (token) {
+      fetch('/api/phone/ping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, device_name: getDeviceModel() })
+      }).then(res => {
+        if (res.ok) onAuthenticated({ pc_name: 'PC' });
+        else { token = ''; localStorage.removeItem('jarvis_phone_token'); }
+      }).catch(() => {});
+    }
+  </script>
+</body>
+</html>

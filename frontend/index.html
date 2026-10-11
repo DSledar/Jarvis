@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>JARVIS Command Center</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- ============================== left rail ============================== -->
+  <aside class="rail">
+    <div class="brand">
+      <div class="brand-mark" aria-hidden="true"></div>
+      <div><b>JARVIS</b><small>Personal command center</small></div>
+    </div>
+
+    <nav id="nav" aria-label="Sections">
+      <button class="nav-btn active" data-view="command"><svg class="ic"><use href="#i-home"/></svg>Command center</button>
+      <button class="nav-btn" data-view="history"><svg class="ic"><use href="#i-doc"/></svg>Chat history</button>
+      <button class="nav-btn" data-view="ai"><svg class="ic"><use href="#i-brain"/></svg>AI core</button>
+      <button class="nav-btn" data-view="agents"><svg class="ic"><use href="#i-bolt"/></svg>Agents and tools</button>
+      <button class="nav-btn" data-view="memory"><svg class="ic"><use href="#i-chip"/></svg>Memory</button>
+      <button class="nav-btn" data-view="media"><svg class="ic"><use href="#i-note"/></svg>Media</button>
+      <button class="nav-btn" data-view="devices"><svg class="ic"><use href="#i-phone"/></svg>Nearby & Phone<span class="badge hidden" id="phoneBadge">0</span></button>
+      <button class="nav-btn" data-view="security"><svg class="ic"><use href="#i-shield"/></svg>Security<span class="badge hidden" id="pendingBadge">0</span></button>
+    </nav>
+
+    <div class="voice-dock">
+      <div class="voice-line"><span id="voiceStatus">Standby</span><div class="bars" id="voiceBars" aria-hidden="true"></div></div>
+      <button id="voiceBtn" class="talk-btn"><svg class="ic"><use href="#i-mic"/></svg><span id="voiceBtnText">Talk to JARVIS</span></button>
+      <label class="field-inline">Voice language <select id="langSelect"></select></label>
+      <div class="row">
+        <button id="speakToggle" class="toggle on" aria-pressed="true">Voice replies: on</button>
+        <button id="testVoice" class="mini">Test</button>
+      </div>
+      <div class="row"><span>Focus mode</span><button id="focusToggle" class="toggle" aria-pressed="false">Off</button></div>
+    </div>
+  </aside>
+
+  <!-- ============================== stage ============================== -->
+  <main class="stage">
+    <header class="top">
+      <div class="chip" id="brainChip"><i class="dot"></i><span id="brainText">Starting...</span></div>
+      <div class="clock"><span id="timeText">--:--:--</span><small id="dateText"></small></div>
+      <div class="top-actions">
+        <button id="cameraBtn" class="ghost"><svg class="ic"><use href="#i-camera"/></svg>Camera</button>
+        <button id="locationBtn" class="ghost"><svg class="ic"><use href="#i-pin"/></svg>Location</button>
+        <button id="searchBtn" class="ghost"><svg class="ic"><use href="#i-search"/></svg>Search</button>
+      </div>
+    </header>
+    <div id="banner" class="banner hidden" role="status"></div>
+
+    <!-- ---------- command center ---------- -->
+    <section class="view active" id="view-command">
+      <div class="cmd">
+        <div class="cmd-main">
+          <div class="hero">
+            <div class="orb" id="orb" data-state="idle" aria-hidden="true">
+              <svg viewBox="0 0 200 200">
+                <circle class="r r1" cx="100" cy="100" r="92"/>
+                <circle class="r r2" cx="100" cy="100" r="78"/>
+                <circle class="r r3" cx="100" cy="100" r="64"/>
+                <g class="ticks" id="ticks"></g>
+                <circle class="core" cx="100" cy="100" r="38"/>
+                <circle class="core-in" cx="100" cy="100" r="22"/>
+              </svg>
+              <div class="wave" id="wave"></div>
+            </div>
+            <div class="hero-text">
+              <h1 id="stateText">Ready</h1>
+              <p id="stateHint">Type a command, or press Talk and just speak.</p>
+              <div class="suggest" id="suggest"></div>
+            </div>
+          </div>
+
+          <div class="chat" id="chatLog" aria-live="polite"></div>
+
+          <form class="composer" id="chatForm" autocomplete="off">
+            <button type="button" id="micInline" class="icon-btn" title="Talk"><svg class="ic"><use href="#i-mic"/></svg></button>
+            <input id="chatInput" placeholder="Tell JARVIS what to do..." aria-label="Message" />
+            <button type="button" id="stopSpeak" class="icon-btn hidden" title="Stop talking"><svg class="ic"><use href="#i-stop"/></svg></button>
+            <button type="submit" class="send">Send</button>
+          </form>
+        </div>
+
+        <aside class="cmd-side">
+          <section class="panel">
+            <h3>Quick actions</h3>
+            <div class="tiles" id="tiles"></div>
+          </section>
+          <section class="panel">
+            <h3>This PC</h3>
+            <div class="rings" id="rings"></div>
+          </section>
+          <section class="panel grow">
+            <h3>Activity</h3>
+            <ul class="log" id="activityLog"><li class="empty">Nothing yet. Actions JARVIS takes will appear here.</li></ul>
+          </section>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ---------- AI core ---------- -->
+    <section class="view" id="view-ai">
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <h2>AI core</h2>
+            <p>JARVIS tries these AI models from top to bottom. If one runs out of free requests or goes offline, it switches to the next one by itself. Simple commands like "open Spotify" never need an AI model.</p>
+          </div>
+          <div class="page-actions">
+            <button class="ghost" id="addBrain">Add a brain</button>
+            <button class="primary" id="saveBrains">Save changes</button>
+          </div>
+        </div>
+        <div id="brainList" class="brain-list"></div>
+        <div class="note" id="aiNote">Free limits change often and every model has its own daily limit. If a brain says "free limit", add the same key again with a different model as a backup.</div>
+      </div>
+    </section>
+
+    <!-- ---------- agents & tools ---------- -->
+    <section class="view" id="view-agents">
+      <div class="page">
+        <div class="page-head">
+          <div><h2>Agents and tools</h2><p>Everything JARVIS can do on your PC. Press Try to run any tool yourself, without the AI.</p></div>
+        </div>
+        <div id="toolGroups"></div>
+      </div>
+    </section>
+
+    <!-- ---------- memory ---------- -->
+    <section class="view" id="view-memory">
+      <div class="page">
+        <div class="page-head"><div><h2>Memory</h2><p>Things JARVIS remembers about you. They are stored only on this PC.</p></div>
+          <div class="page-actions"><button class="ghost danger" id="clearHistory">Clear chat history</button></div></div>
+        <form class="inline-form" id="factForm"><input id="factInput" placeholder="Add something for JARVIS to remember" /><button class="primary" type="submit">Remember</button></form>
+        <ul class="facts" id="factList"></ul>
+      </div>
+    </section>
+
+    <!-- ---------- chat history ---------- -->
+    <section class="view" id="view-history">
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <h2>Persistent Chat History & Memory Recall</h2>
+            <p>Every conversation is remembered and searchable. Browse past chats, search through messages and learned knowledge, or start a new chat anytime.</p>
+          </div>
+          <div class="page-actions">
+            <button class="primary" id="btnNewSession">➕ New Chat</button>
+          </div>
+        </div>
+
+        <div class="history-layout">
+          <aside class="history-sidebar">
+            <div style="display:flex; gap:6px;">
+              <input id="historySearchInput" placeholder="Search conversations & facts..." style="flex:1; padding:8px 10px; background:#04121a; border:1px solid var(--line-soft); border-radius:3px; color:#fff; font-size:13.5px;" />
+              <button class="ghost" id="btnHistorySearch" style="padding:0 10px;">Search</button>
+            </div>
+            <ul class="history-list" id="sessionList">
+              <li class="empty">Loading chat history...</li>
+            </ul>
+          </aside>
+
+          <section class="history-view">
+            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--line-soft); padding-bottom:8px;">
+              <div>
+                <h3 id="currentSessionTitle" style="margin:0; font-size:16px; color:#fff;">Select a Conversation</h3>
+                <span id="currentSessionMeta" style="font-size:12px; color:var(--muted)">0 messages</span>
+              </div>
+              <div style="display:flex; gap:8px;">
+                <button class="ghost" id="btnSwitchToSession">Make Active Chat</button>
+                <button class="ghost danger" id="btnDeleteSession">Delete</button>
+              </div>
+            </div>
+            <div class="history-msgs" id="sessionMessages">
+              <p class="empty">Select a conversation from the sidebar to view its transcript.</p>
+            </div>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- media ---------- -->
+    <section class="view" id="view-media">
+      <div class="page">
+        <div class="page-head"><div><h2>Media</h2><p>Controls work with Spotify, YouTube and any player, even in the background.</p></div></div>
+        <div class="media-grid">
+          <section class="panel">
+            <h3>Player</h3>
+            <div class="transport">
+              <button data-media="previous" title="Previous"><svg class="ic"><use href="#i-prev"/></svg></button>
+              <button data-media="play_pause" class="big" title="Play or pause"><svg class="ic"><use href="#i-play"/></svg></button>
+              <button data-media="next" title="Next"><svg class="ic"><use href="#i-next"/></svg></button>
+            </div>
+            <div class="transport small">
+              <button data-media="volume_down">Volume down</button>
+              <button data-media="mute">Mute</button>
+              <button data-media="volume_up">Volume up</button>
+            </div>
+          </section>
+          <section class="panel">
+            <h3>Spotify</h3>
+            <form class="inline-form" id="spotifyForm"><input id="spotifyInput" placeholder="Song, artist or playlist" /><button class="primary" type="submit">Search</button></form>
+            <button class="ghost wide" id="openSpotify">Open the Spotify app</button>
+          </section>
+          <section class="panel">
+            <h3>YouTube</h3>
+            <form class="inline-form" id="youtubeForm"><input id="youtubeInput" placeholder="What do you want to watch?" /><button class="primary" type="submit" data-mode="play">Play</button><button class="ghost" type="button" id="youtubeSearchBtn">Results</button></form>
+            <button class="ghost wide" id="openYoutube">Open YouTube</button>
+          </section>
+        </div>
+      </div>
+    </section>
+
+    <!-- ---------- nearby & phone ---------- -->
+    <section class="view" id="view-devices">
+      <div class="page">
+        <div class="page-head">
+          <div>
+            <h2>Nearby devices & Phone access</h2>
+            <p>Access JARVIS from your phone over Wi-Fi by entering your secure passcode. Ring your phone, transfer files, sync clipboards, and discover nearby devices.</p>
+          </div>
+          <div class="page-actions">
+            <button class="ghost" id="scanDevicesBtn">Scan network</button>
+            <button class="primary" id="ringPhoneBtn">Ring my phone</button>
+          </div>
+        </div>
+
+        <div class="media-grid">
+          <section class="panel">
+            <h3>Local phone companion access (Wi-Fi)</h3>
+            <p class="muted">Open this portal link on your phone (connected to the same Wi-Fi) and enter your access passcode:</p>
+            <div style="display:flex; gap:10px; align-items:center; margin:10px 0;">
+              <a id="phonePortalLink" href="/phone" target="_blank" style="flex:1; padding:12px 14px; background:#04121a; border:1px solid var(--cyan-dim); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:15px; word-break:break-all;">http://.../phone</a>
+              <button class="ghost" id="copyPortalLink" type="button">Copy</button>
+            </div>
+            <form class="inline-form" id="passcodeForm" style="margin-top:14px">
+              <input id="passcodeInput" type="text" placeholder="Passcode (e.g. 1234)" />
+              <button class="primary" type="submit">Change passcode</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">Remote Access Outside Wi-Fi (4G / 5G)</h3>
+              <span id="remoteTunnelBadge" class="tunnel-status-badge stopped">● Offline</span>
+            </div>
+            <p class="muted">Access your PC from your phone anywhere in the world (even on cellular data or outside home) via secure encrypted reverse SSH tunnel:</p>
+            <div style="display:flex; gap:10px; align-items:center; margin:10px 0;">
+              <a id="remoteTunnelLink" href="#" target="_blank" style="flex:1; padding:12px 14px; background:#04121a; border:1px solid var(--card-border); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:14px; word-break:break-all;">Tunnel not started</a>
+              <button class="ghost" id="copyRemoteTunnelLink" type="button">Copy</button>
+            </div>
+            <div class="row-btns" style="margin-top:10px; gap:8px;">
+              <button class="primary" id="btnToggleTunnel" type="button">Start Remote Tunnel</button>
+              <button class="ghost" id="btnOpenGitHubGuide" type="button">GitHub Hosting Guide</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="media-grid" style="margin-top:16px;">
+          <section class="panel">
+            <h3>Wake-on-LAN (WoL) PC Wake & Sleep</h3>
+            <p class="muted">Power on your sleeping PC from your phone over local Wi-Fi:</p>
+            <div id="wolInfoDisplay" style="padding:10px; border-radius:4px; background:#04121a; border:1px solid var(--line-soft); font-size:13.5px; font-family:var(--mono); margin:10px 0;">
+              Loading PC MAC address...
+            </div>
+            <div class="row-btns" style="gap:8px;">
+              <button class="ghost" id="btnTestWol" type="button">⚡ Test WoL Packet</button>
+              <button class="ghost danger" id="btnSleepPcDash" type="button">💤 Put PC to Sleep</button>
+            </div>
+          </section>
+
+          <section class="panel">
+            <h3>Connected phones</h3>
+            <div id="connectedPhonesList">
+              <p class="empty">No phone currently connected. Open the portal link on your phone and enter the passcode.</p>
+            </div>
+            <div class="row-btns" style="margin-top:14px; flex-wrap:wrap">
+              <button class="ghost" id="sendClipPhoneBtn" type="button">Send PC clipboard to phone</button>
+              <button class="primary" id="sendNotifyPhoneBtn" type="button">Send test alert to phone</button>
+            </div>
+          </section>
+        </div>
+
+        <section class="panel">
+          <div class="panel-head">
+            <h3>Discovered nearby devices on local network</h3>
+          </div>
+          <div id="nearbyDevicesList">
+            <p class="empty">Scanning local network...</p>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <!-- ---------- security ---------- -->
+    <section class="view" id="view-security">
+      <div class="page">
+        <div class="page-head"><div><h2>Security</h2><p>You stay in control. Risky actions wait here until you approve them.</p></div>
+          <div class="page-actions"><button class="ghost danger" id="denyAll">Deny all waiting</button></div></div>
+        <section class="panel"><h3>Waiting for your approval</h3><div id="pendingList"><p class="empty">Nothing is waiting.</p></div></section>
+        <section class="panel">
+          <h3>Safety rules</h3>
+          <ul class="rules">
+            <li>The server only answers requests from this PC (127.0.0.1).</li>
+            <li>Running commands, writing files, deleting files and restart or shutdown always ask first. Deleted files move to a recoverable folder.</li>
+            <li>Mouse and keyboard control can be stopped instantly by moving the mouse into any screen corner.</li>
+            <li>API keys stay in <code>data/settings.json</code> on this PC and are never shown in the browser.</li>
+          </ul>
+        </section>
+        <section class="panel"><h3>Everything JARVIS did this session</h3><ul class="log" id="activityLogFull"><li class="empty">Nothing yet.</li></ul></section>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ============================== modals ============================== -->
+<div id="cameraModal" class="modal hidden" role="dialog" aria-label="Camera">
+  <div class="modal-card wide"><div class="modal-head"><h3>Camera</h3><button class="icon-btn" data-close>Close</button></div>
+    <video id="cameraVideo" autoplay playsinline muted></video><p class="muted" id="cameraStatus">Waiting for permission...</p></div>
+</div>
+<div id="searchModal" class="modal hidden" role="dialog" aria-label="Search">
+  <form class="modal-card" id="searchForm"><div class="modal-head"><h3>Search</h3><button type="button" class="icon-btn" data-close>Close</button></div>
+    <input id="searchInput" placeholder="What are you looking for?" />
+    <div class="row-btns"><button class="ghost" type="button" id="searchGoogle">Open in Google</button><button class="primary" type="submit">Ask JARVIS</button></div></form>
+</div>
+<div id="toolModal" class="modal hidden" role="dialog" aria-label="Run tool">
+  <form class="modal-card" id="toolForm"><div class="modal-head"><h3 id="toolTitle">Tool</h3><button type="button" class="icon-btn" data-close>Close</button></div>
+    <p class="muted" id="toolDesc"></p><div id="toolFields"></div><pre class="result hidden" id="toolResult"></pre>
+    <div class="row-btns"><button class="primary" type="submit" id="toolRun">Run</button></div></form>
+</div>
+<div id="githubModal" class="modal hidden" role="dialog" aria-label="GitHub Hosting Guide">
+  <div class="modal-card wide">
+    <div class="modal-head">
+      <h3>GitHub Hosting & Remote Setup Guide</h3>
+      <button type="button" class="icon-btn" data-close>Close</button>
+    </div>
+    <div style="font-size:14px; line-height:1.6; color:var(--text); max-height:420px; overflow-y:auto; padding-right:8px;">
+      <h4 style="color:var(--cyan); margin-top:0;">1. Push JARVIS to your GitHub Repository</h4>
+      <p>Your codebase is ready to be hosted on your personal GitHub account:</p>
+      <pre style="background:#04121a; padding:10px; border-radius:4px; font-family:var(--mono); color:var(--amber);">git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO.git
+git branch -M main
+git push -u origin main</pre>
+      <h4 style="color:var(--cyan);">2. Remote Control Outside Wi-Fi (Cellular 4G / 5G)</h4>
+      <p>To control your PC when phone and PC are on different networks or when you are outside your home:</p>
+      <ol style="padding-left:20px;">
+        <li>In JARVIS dashboard, click <b>Start Remote Tunnel</b>.</li>
+        <li>Open the generated HTTPS URL on your phone or scan the QR code.</li>
+        <li>Enter your access passcode. You now have full remote control (touchpad, keyboard, live screen, sleep/wake, app control) from anywhere in the world!</li>
+      </ol>
+      <h4 style="color:var(--cyan);">3. Wake-on-LAN (WoL) from Sleep Mode</h4>
+      <p>When your PC is in sleep mode, tap <b>Wake PC (WoL)</b> on your phone. A magic packet is broadcasted across the network to wake up the network adapter and turn the computer on.</p>
+    </div>
+  </div>
+</div>
+<div id="toast" class="toast hidden" role="status"></div>
+
+<!-- ============================== icons ============================== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10"/></symbol>
+    <symbol id="i-brain" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></symbol>
+    <symbol id="i-bolt" viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7z"/></symbol>
+    <symbol id="i-chip" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-note" viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0014 0M12 18v3"/></symbol>
+    <symbol id="i-camera" viewBox="0 0 24 24"><path d="M3 8h4l2-3h6l2 3h4v11H3z"/><circle cx="12" cy="13" r="3.5"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24"><path d="M12 21s-7-6.2-7-11a7 7 0 0114 0c0 4.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l5 5"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="1"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M19 5v14L8 12zM5 5v14"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 5v14l11-7zM19 5v14"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M7.5 9.5c3.5-1 7-.6 9.5 1M8 12.5c3-.8 5.8-.5 8 .8M8.5 15.3c2.4-.6 4.4-.4 6.2.6"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="12" rx="3"/><path d="M10.5 9.5v5l4.5-2.5z"/></symbol>
+    <symbol id="i-globe" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3 3 15 0 18M12 3c-3 3-3 15 0 18"/></symbol>
+    <symbol id="i-doc" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v4h4M9 12h6M9 16h6"/></symbol>
+    <symbol id="i-calc" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M8 7h8M8 12h2M12 12h2M8 16h2M12 16h2"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 6h7l2 2h9v11H3z"/></symbol>
+    <symbol id="i-shot" viewBox="0 0 24 24"><path d="M4 8V4h4M16 4h4v4M20 16v4h-4M8 20H4v-4"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 018 0v3"/></symbol>
+    <symbol id="i-vol" viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 010 7"/></symbol>
+    <symbol id="i-phone" viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="3"/><line x1="12" y1="18" x2="12.01" y2="18" stroke-width="2.5"/><line x1="9" y1="5" x2="15" y2="5"/></symbol>
+    <symbol id="i-window" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/></symbol>
+    <symbol id="i-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
+    <symbol id="i-min" viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/></symbol>
+    <symbol id="i-max" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></symbol>
+  </defs>
+</svg>
+<script src="/app.js"></script>
+</body>
+</html>

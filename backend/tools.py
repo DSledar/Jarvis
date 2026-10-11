@@ -1,0 +1,1056 @@
+"""PC-control tools for JARVIS.
+
+Safe actions run immediately. Risky ones (shell commands, writing/deleting files,
+shutdown/restart) are queued in PENDING and only run after you click Approve
+in the dashboard.
+"""
+from __future__ import annotations
+
+import base64
+import difflib
+import io
+import json
+import os
+import platform
+import re
+import subprocess
+import time
+import uuid
+import webbrowser
+from pathlib import Path
+from typing import Any, Callable
+from urllib.parse import quote, quote_plus
+
+if __package__:
+    from . import devices, memory
+else:
+    import devices  # type: ignore
+    import memory  # type: ignore
+
+IS_WINDOWS = platform.system().lower() == "windows"
+HOME = Path.home()
+
+# --------------------------------------------------------------------------- registry
+TOOLS: dict[str, dict[str, Any]] = {}
+RISKY: dict[str, Callable[..., str]] = {}
+PENDING: dict[str, dict[str, Any]] = {}
+
+
+def tool(name: str, description: str, params: dict[str, str] | None = None,
+         required: list[str] | None = None, risky: bool = False):
+    """Register a function as an LLM tool. params = {arg_name: 'type: description'}."""
+    props = {}
+    for arg, spec in (params or {}).items():
+        typ, _, desc = spec.partition(":")
+        props[arg] = {"type": typ.strip(), "description": desc.strip()}
+
+    def deco(fn: Callable[..., str]):
+        TOOLS[name] = {
+            "fn": fn,
+            "risky": risky,
+            "schema": {
+                "type": "function",
+                "function": {
+                    "name": name,
+                    "description": description + (" (REQUIRES USER APPROVAL)" if risky else ""),
+                    "parameters": {"type": "object", "properties": props,
+                                   "required": required if required is not None else list(props)},
+                },
+            },
+        }
+        return fn
+    return deco
+
+
+def schemas() -> list[dict]:
+    return [t["schema"] for t in TOOLS.values()]
+
+
+class ToolError(Exception):
+    """A tool could not do what was asked. The message is shown/spoken to the user."""
+
+
+def failed(text: str) -> bool:
+    return str(text).startswith("ERROR")
+
+
+def run_tool(name: str, args: dict[str, Any]) -> str:
+    """Execute a tool; risky tools are queued for approval instead. Failures start with 'ERROR'."""
+    spec = TOOLS.get(name)
+    if not spec:
+        return f"ERROR: unknown tool '{name}'."
+    if spec["risky"]:
+        pid = uuid.uuid4().hex[:8]
+        PENDING[pid] = {"id": pid, "tool": name, "args": args, "created": time.time()}
+        return (f"APPROVAL_REQUIRED: '{name}' was queued (id {pid}). Tell the user to press Approve "
+                "in the dashboard. Do NOT claim it has been done.")
+    try:
+        return str(spec["fn"](**args))
+    except ToolError as exc:
+        return f"ERROR: {exc}"
+    except TypeError as exc:
+        return f"ERROR: bad arguments for {name}: {exc}"
+    except Exception as exc:  # noqa: BLE001 - report any tool failure to the model
+        return f"ERROR: {name} failed: {exc}"
+
+
+def resolve_pending(pid: str, approve: bool) -> str:
+    item = PENDING.pop(pid, None)
+    if not item:
+        return "That request no longer exists."
+    if not approve:
+        return f"Denied: {item['tool']}."
+    try:
+        return str(TOOLS[item["tool"]]["fn"](**item["args"]))
+    except Exception as exc:  # noqa: BLE001
+        return f"ERROR: {item['tool']} failed: {exc}"
+
+
+def pending_list() -> list[dict]:
+    return [{"id": p["id"], "tool": p["tool"], "args": p["args"]} for p in PENDING.values()]
+
+
+# --------------------------------------------------------------------------- helpers
+def _gui():
+    import pyautogui  # lazy: needs a desktop session
+    pyautogui.FAILSAFE = True  # slam the mouse into a screen corner to abort
+    pyautogui.PAUSE = 0.15
+    return pyautogui
+
+
+def _open_path(target: str) -> None:
+    if IS_WINDOWS:
+        os.startfile(target)  # type: ignore[attr-defined]  # noqa: S606
+    elif platform.system() == "Darwin":
+        subprocess.Popen(["open", target])
+    else:
+        subprocess.Popen(["xdg-open", target])
+
+
+def _trim(text: str, limit: int = 4000) -> str:
+    return text if len(text) <= limit else text[:limit] + f"\n...[truncated {len(text) - limit} chars]"
+
+
+# --------------------------------------------------------------------------- app launcher (finds ANY installed app)
+# friendly name -> names to look for in the Start Menu app list
+APP_ALIASES = {
+    "chrome": "Google Chrome", "google chrome": "Google Chrome", "edge": "Microsoft Edge",
+    "microsoft edge": "Microsoft Edge", "firefox": "Firefox", "notepad": "Notepad",
+    "calculator": "Calculator", "calc": "Calculator", "paint": "Paint", "file explorer": "File Explorer",
+    "explorer": "File Explorer", "files": "File Explorer", "task manager": "Task Manager",
+    "cmd": "Command Prompt", "command prompt": "Command Prompt", "powershell": "Windows PowerShell",
+    "terminal": "Terminal", "settings": "Settings", "snipping tool": "Snipping Tool", "word": "Word",
+    "excel": "Excel", "powerpoint": "PowerPoint", "vs code": "Visual Studio Code",
+    "vscode": "Visual Studio Code", "code": "Visual Studio Code", "camera": "Camera", "clock": "Clock",
+    "spotify": "Spotify", "discord": "Discord", "whatsapp": "WhatsApp", "telegram": "Telegram",
+    "steam": "Steam", "vlc": "VLC", "zoom": "Zoom", "teams": "Teams", "android studio": "Android Studio",
+}
+# apps that also exist as a website - used when the desktop app is not installed
+SITES = {
+    "youtube": "https://www.youtube.com", "google": "https://www.google.com", "gmail": "https://mail.google.com",
+    "github": "https://github.com", "facebook": "https://www.facebook.com", "instagram": "https://www.instagram.com",
+    "twitter": "https://x.com", "x": "https://x.com", "tiktok": "https://www.tiktok.com",
+    "netflix": "https://www.netflix.com", "chatgpt": "https://chatgpt.com", "maps": "https://maps.google.com",
+    "spotify": "https://open.spotify.com", "whatsapp": "https://web.whatsapp.com",
+    "telegram": "https://web.telegram.org", "discord": "https://discord.com/app", "drive": "https://drive.google.com",
+    "translate": "https://translate.google.com", "gemini": "https://gemini.google.com",
+    "claude": "https://claude.ai", "snapchat": "https://web.snapchat.com", "linkedin": "https://www.linkedin.com",
+}
+_APPS_CACHE: dict[str, Any] = {"t": 0.0, "apps": []}
+NO_WINDOW = 0x08000000 if IS_WINDOWS else 0
+
+
+def _start_apps() -> list[tuple[str, str]]:
+    """(name, AppID) of every app in the Start Menu, including Store apps. Cached for 10 minutes."""
+    if _APPS_CACHE["apps"] and time.time() - _APPS_CACHE["t"] < 600:
+        return _APPS_CACHE["apps"]
+    apps: list[tuple[str, str]] = []
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                              "Get-StartApps | ConvertTo-Json -Compress"],
+                             capture_output=True, text=True, timeout=25, creationflags=NO_WINDOW)
+        data = json.loads(out.stdout or "[]")
+        data = [data] if isinstance(data, dict) else data
+        apps = [(d["Name"], d["AppID"]) for d in data if d.get("Name") and d.get("AppID")]
+    except Exception:  # noqa: BLE001
+        pass
+    if apps:
+        _APPS_CACHE.update(t=time.time(), apps=apps)
+    return apps
+
+
+def _match_app(query: str, apps: list[tuple[str, str]]) -> tuple[str, str] | None:
+    q = query.strip().lower()
+    names = {n.lower(): (n, i) for n, i in apps}
+    if q in names:
+        return names[q]
+    starts = [v for k, v in names.items() if k.startswith(q)]
+    if starts:
+        return min(starts, key=lambda v: len(v[0]))
+    inside = [v for k, v in names.items() if q in k]
+    if inside:
+        return min(inside, key=lambda v: len(v[0]))
+    close = difflib.get_close_matches(q, list(names), n=1, cutoff=0.72)
+    return names[close[0]] if close else None
+
+
+def _launch_appid(appid: str) -> None:
+    subprocess.Popen(["explorer.exe", f"shell:AppsFolder\\{appid}"])  # noqa: S603,S607
+
+
+@tool("open_app", "Open ANY installed application by name (Spotify, Chrome, Notepad, VS Code, WhatsApp, Discord, Settings...). Falls back to the website for known web apps.",
+      {"name": "string: app name, e.g. 'spotify' or 'notepad'"})
+def open_app(name: str) -> str:
+    key = re.sub(r"\s+", " ", name.strip().lower())
+    if not key:
+        raise ToolError("Tell me which app to open.")
+    if not IS_WINDOWS:
+        if key in SITES:
+            webbrowser.open(SITES[key])
+            return f"Opened {key} in the browser (app launching is built for Windows)."
+        raise ToolError(f"App launching is built for Windows; this machine is {platform.system()}.")
+
+    wanted = APP_ALIASES.get(key, name.strip())
+    apps = _start_apps()
+    hit = _match_app(wanted, apps) or (_match_app(key, apps) if wanted != key else None)
+    if hit:
+        _launch_appid(hit[1])
+        return f"Opening {hit[0]}."
+    exe = shutil_which(key)
+    if exe:
+        subprocess.Popen([exe])  # noqa: S603
+        return f"Opening {key}."
+    if key == "spotify":  # Spotify registers a URI scheme even when it is not in the Start list
+        try:
+            os.startfile("spotify:")  # type: ignore[attr-defined]  # noqa: S606
+            return "Opening Spotify."
+        except OSError:
+            pass
+    if key in SITES:
+        webbrowser.open(SITES[key])
+        return f"{name.strip().title()} is not installed as an app, so I opened the website."
+    close = difflib.get_close_matches(key, [n.lower() for n, _ in apps], n=3, cutoff=0.4)
+    hint = f" Did you mean: {', '.join(close)}?" if close else ""
+    raise ToolError(f"I could not find an app called '{name}'.{hint}")
+
+
+def shutil_which(cmd: str) -> str | None:
+    import shutil
+    return shutil.which(cmd)
+
+
+@tool("list_apps", "List installed apps that JARVIS can open.", {"filter": "string: optional text to filter by"}, required=[])
+def list_apps(filter: str = "") -> str:  # noqa: A002
+    names = sorted({n for n, _ in _start_apps() if filter.lower() in n.lower()})
+    return ", ".join(names[:120]) or "No apps found (this works on Windows)."
+
+
+@tool("open_url", "Open an http(s) link in the default browser.", {"url": "string: full URL starting with http:// or https://"})
+def open_url(url: str) -> str:
+    if not url.strip().lower().startswith(("http://", "https://")):
+        raise ToolError("Only http:// and https:// links are allowed.")
+    webbrowser.open(url.strip())
+    return f"Opened {url}."
+
+
+@tool("web_search", "Search the web (DuckDuckGo, free) and return titles, links and snippets. Use for anything current.",
+      {"query": "string: search query", "max_results": "integer: 1-8, default 5"}, required=["query"])
+def web_search(query: str, max_results: int = 5) -> str:
+    try:
+        try:
+            from ddgs import DDGS
+        except ImportError:
+            from duckduckgo_search import DDGS  # type: ignore
+        n = max(1, min(int(max_results), 8))
+        rows = list(DDGS().text(query, max_results=n))
+    except Exception as exc:  # noqa: BLE001
+        return f"Web search failed: {exc}"
+    if not rows:
+        return "No results."
+    return "\n\n".join(f"{r.get('title')}\n{r.get('href')}\n{r.get('body')}" for r in rows)
+
+
+@tool("youtube_search", "Open a YouTube search results page in the browser.", {"query": "string: what to search for"})
+def youtube_search(query: str) -> str:
+    webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
+    return f"Opened YouTube search for {query}."
+
+
+@tool("youtube_play", "Find the best YouTube match for a song/video and start playing it in the browser.", {"query": "string: song or video name"})
+def youtube_play(query: str) -> str:
+    try:
+        import httpx
+        r = httpx.get(f"https://www.youtube.com/results?search_query={quote_plus(query)}",
+                      headers={"User-Agent": "Mozilla/5.0", "Accept-Language": "en"}, timeout=8, follow_redirects=True)
+        m = re.search(r'"videoId":"([\w-]{11})"', r.text)
+        if m:
+            webbrowser.open(f"https://www.youtube.com/watch?v={m.group(1)}")
+            return f"Playing {query} on YouTube."
+    except Exception:  # noqa: BLE001
+        pass
+    webbrowser.open(f"https://www.youtube.com/results?search_query={quote_plus(query)}")
+    return f"Opened YouTube results for {query}. Click a video to play."
+
+
+@tool("spotify_search", "Search Spotify for a song, artist or playlist (opens the Spotify app if installed, otherwise the web player).",
+      {"query": "string: song, artist, or playlist"})
+def spotify_search(query: str) -> str:
+    if IS_WINDOWS:
+        try:
+            os.startfile(f"spotify:search:{quote(query)}")  # type: ignore[attr-defined]  # noqa: S606
+            return f"Searching Spotify for {query}. Press play on the top result."
+        except OSError:
+            pass
+    webbrowser.open(f"https://open.spotify.com/search/{quote(query)}")
+    return f"Opened Spotify web search for {query}. Press play on the top result."
+
+
+@tool("get_time", "Get the current local date and time.")
+def get_time() -> str:
+    import datetime
+    return datetime.datetime.now().strftime("It is %H:%M on %A, %d %B %Y.")
+
+
+@tool("lock_pc", "Lock the Windows screen.")
+def lock_pc() -> str:
+    if not IS_WINDOWS:
+        raise ToolError("Locking is built for Windows.")
+    import ctypes
+    ctypes.windll.user32.LockWorkStation()  # type: ignore[attr-defined]
+    return "Locking the PC."
+
+
+@tool("show_desktop", "Minimise everything and show the desktop (Win+D).")
+def show_desktop() -> str:
+    _gui().hotkey("win", "d")
+    return "Showing the desktop."
+
+
+# --------------------------------------------------------------------------- mouse / keyboard / screen
+@tool("screen_size", "Get the screen resolution and current mouse position.")
+def screen_size() -> str:
+    g = _gui()
+    w, h = g.size()
+    x, y = g.position()
+    return f"Screen {w}x{h}, mouse at ({x},{y})."
+
+
+@tool("mouse_click", "Move the mouse to pixel (x, y) and click.",
+      {"x": "integer: x pixel", "y": "integer: y pixel", "button": "string: left, right or middle (default left)",
+       "double": "boolean: double-click if true"}, required=["x", "y"])
+def mouse_click(x: int, y: int, button: str = "left", double: bool = False) -> str:
+    g = _gui()
+    g.click(int(x), int(y), clicks=2 if double else 1, button=button if button in ("left", "right", "middle") else "left")
+    return f"Clicked ({x},{y}) with {button} button{' twice' if double else ''}."
+
+
+@tool("mouse_move", "Move the mouse pointer to pixel (x, y).", {"x": "integer: x pixel", "y": "integer: y pixel"})
+def mouse_move(x: int, y: int) -> str:
+    _gui().moveTo(int(x), int(y), duration=0.2)
+    return f"Moved mouse to ({x},{y})."
+
+
+@tool("scroll", "Scroll the mouse wheel. Positive = up, negative = down.", {"amount": "integer: wheel clicks, e.g. -5"})
+def scroll(amount: int) -> str:
+    _gui().scroll(int(amount) * 100)
+    return f"Scrolled {amount}."
+
+
+@tool("type_text", "Type text into the focused window. Works with any language (uses paste for non-ASCII).",
+      {"text": "string: text to type", "press_enter": "boolean: press Enter afterwards"}, required=["text"])
+def type_text(text: str, press_enter: bool = False) -> str:
+    g = _gui()
+    if text.isascii():
+        g.write(text, interval=0.01)
+    else:
+        import pyperclip
+        old = None
+        try:
+            old = pyperclip.paste()
+        except Exception:  # noqa: BLE001
+            pass
+        pyperclip.copy(text)
+        g.hotkey("command" if platform.system() == "Darwin" else "ctrl", "v")
+        time.sleep(0.2)
+        if old is not None:
+            pyperclip.copy(old)
+    if press_enter:
+        g.press("enter")
+    return f"Typed {len(text)} characters."
+
+
+@tool("press_key", "Press a key or shortcut. Use '+' for combos, e.g. 'enter', 'win', 'ctrl+c', 'alt+tab', 'ctrl+shift+esc'.",
+      {"keys": "string: key or combo"})
+def press_key(keys: str) -> str:
+    parts = [k.strip().lower() for k in keys.split("+") if k.strip()]
+    g = _gui()
+    g.hotkey(*parts) if len(parts) > 1 else g.press(parts[0])
+    return f"Pressed {keys}."
+
+
+@tool("media_control", "Control system volume and media playback (works with Spotify/YouTube in the background).",
+      {"action": "string: volume_up, volume_down, mute, play_pause, next, previous", "times": "integer: repeat count (volume steps are 2% each, default 5)"},
+      required=["action"])
+def media_control(action: str, times: int = 0) -> str:
+    keys = {"volume_up": "volumeup", "volume_down": "volumedown", "mute": "volumemute",
+            "play_pause": "playpause", "next": "nexttrack", "previous": "prevtrack"}
+    if action not in keys:
+        raise ToolError(f"Unknown action. Use: {', '.join(keys)}")
+    n = int(times) or (5 if action.startswith("volume") else 1)
+    _gui().press(keys[action], presses=max(1, min(n, 50)))
+    return f"Done: {action.replace('_', ' ')}."
+
+
+@tool("take_screenshot", "Save a screenshot and return its file path.")
+def take_screenshot() -> str:
+    out = HOME / "Pictures" / f"jarvis_{int(time.time())}.png"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    _gui().screenshot(str(out))
+    return f"Saved screenshot to {out}"
+
+
+@tool("look_at_screen", "Take a screenshot and have the vision model describe it or find where something is (returns pixel coordinates). Needs JARVIS_VISION_MODEL.",
+      {"question": "string: what to look for, e.g. 'where is the Send button? give x,y'"})
+def look_at_screen(question: str) -> str:
+    import httpx
+    vision = os.getenv("JARVIS_VISION_MODEL", "").strip()
+    if not vision:
+        return "No vision model configured. Set JARVIS_VISION_MODEL in .env (e.g. qwen2.5vl:7b) and restart. Meanwhile, use keyboard shortcuts."
+    img = _gui().screenshot()
+    w, h = img.size
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode()
+    provider = os.getenv("JARVIS_PROVIDER", "ollama").lower()
+    base = os.getenv("JARVIS_BASE_URL", "http://127.0.0.1:11434" if provider == "ollama" else "").rstrip("/")
+    if provider == "ollama" and not base.endswith("/v1"):
+        base += "/v1"  # Ollama's OpenAI-compatible route handles image input
+    headers = {"Authorization": f"Bearer {os.environ['JARVIS_API_KEY']}"} if os.getenv("JARVIS_API_KEY") else {}
+    body = {"model": vision, "messages": [{"role": "user", "content": [
+        {"type": "text", "text": f"Screen is {w}x{h} pixels. {question}"},
+        {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{b64}"}}]}]}
+    r = httpx.post(f"{base}/chat/completions", json=body, headers=headers, timeout=180)
+    r.raise_for_status()
+    return r.json()["choices"][0]["message"]["content"]
+
+
+@tool("list_windows", "List open window titles (Windows).")
+def list_windows() -> str:
+    import pygetwindow as gw
+    titles = [t for t in gw.getAllTitles() if t.strip()]
+    return "\n".join(titles) or "No windows found."
+
+
+@tool("focus_window", "Bring a window to the front by (part of) its title (Windows).", {"title": "string: part of the window title"})
+def focus_window(title: str) -> str:
+    import pygetwindow as gw
+    hits = gw.getWindowsWithTitle(title)
+    if not hits:
+        return f"No window matching '{title}'."
+    w = hits[0]
+    if getattr(w, "isMinimized", False):
+        w.restore()
+    w.activate()
+    return f"Focused '{w.title}'."
+
+
+def _find_window_handle(title: str = "") -> tuple[Any, str]:
+    """Find a window HWND by title substring, or return the active foreground window."""
+    if not IS_WINDOWS:
+        return None, ""
+    try:
+        import win32gui
+        if not title or title.lower() in ("active", "current", "this", "focused"):
+            hwnd = win32gui.GetForegroundWindow()
+            t = win32gui.GetWindowText(hwnd) if hwnd else "Active window"
+            return hwnd, t
+        matches: list[tuple[int, str]] = []
+        def _enum_cb(h: int, _: Any):
+            if win32gui.IsWindowVisible(h):
+                txt = win32gui.GetWindowText(h)
+                if txt and title.lower() in txt.lower():
+                    matches.append((h, txt))
+        win32gui.EnumWindows(_enum_cb, None)
+        if matches:
+            return matches[0]
+    except Exception:
+        pass
+    return None, ""
+
+
+@tool("minimize_window", "Minimise a window by its title, or minimise the current active window if title is empty or 'active'.",
+      {"title": "string: window title to minimise, or empty for current window"}, required=[])
+def minimize_window(title: str = "") -> str:
+    if not IS_WINDOWS:
+        raise ToolError("Window management is built for Windows.")
+    hwnd, name = _find_window_handle(title)
+    if hwnd:
+        try:
+            import win32con, win32gui
+            win32gui.ShowWindow(hwnd, win32con.SW_MINIMIZE)
+            return f"Minimised '{name}'."
+        except Exception:
+            pass
+    try:
+        import pygetwindow as gw
+        hits = gw.getWindowsWithTitle(title) if title else [gw.getActiveWindow()]
+        if hits and hits[0]:
+            hits[0].minimize()
+            return f"Minimised '{hits[0].title}'."
+    except Exception:
+        pass
+    try:
+        _gui().hotkey("win", "down")
+    except Exception:
+        pass
+    return f"Minimised {title or 'active window'}."
+
+
+@tool("maximize_window", "Maximise (make full size) a window by its title, or the current active window if title is empty or 'active'.",
+      {"title": "string: window title to make full size, or empty for current window"}, required=[])
+def maximize_window(title: str = "") -> str:
+    if not IS_WINDOWS:
+        raise ToolError("Window management is built for Windows.")
+    hwnd, name = _find_window_handle(title)
+    if hwnd:
+        try:
+            import win32con, win32gui
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            try:
+                win32gui.SetForegroundWindow(hwnd)
+            except Exception:
+                pass
+            win32gui.ShowWindow(hwnd, win32con.SW_MAXIMIZE)
+            return f"Maximised '{name}' to full size."
+        except Exception:
+            pass
+    try:
+        import pygetwindow as gw
+        hits = gw.getWindowsWithTitle(title) if title else [gw.getActiveWindow()]
+        if hits and hits[0]:
+            hits[0].restore()
+            hits[0].activate()
+            hits[0].maximize()
+            return f"Maximised '{hits[0].title}' to full size."
+    except Exception:
+        pass
+    try:
+        _gui().hotkey("win", "up")
+    except Exception:
+        pass
+    return f"Maximised {title or 'active window'} to full size."
+
+
+@tool("restore_window", "Restore a minimised or maximised window to its normal windowed size.",
+      {"title": "string: window title, or empty for current window"}, required=[])
+def restore_window(title: str = "") -> str:
+    if not IS_WINDOWS:
+        raise ToolError("Window management is built for Windows.")
+    hwnd, name = _find_window_handle(title)
+    if hwnd:
+        try:
+            import win32con, win32gui
+            win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+            return f"Restored '{name}' to normal size."
+        except Exception:
+            pass
+    try:
+        import pygetwindow as gw
+        hits = gw.getWindowsWithTitle(title) if title else [gw.getActiveWindow()]
+        if hits and hits[0]:
+            hits[0].restore()
+            return f"Restored '{hits[0].title}'."
+    except Exception:
+        pass
+    try:
+        _gui().hotkey("win", "down")
+    except Exception:
+        pass
+    return f"Restored {title or 'window'}."
+
+
+@tool("close_window", "Close a window by title (or the active window).",
+      {"title": "string: window title to close, or empty for current window"}, required=[])
+def close_window(title: str = "") -> str:
+    if not IS_WINDOWS:
+        raise ToolError("Window management is built for Windows.")
+    hwnd, name = _find_window_handle(title)
+    if hwnd:
+        try:
+            import win32con, win32gui
+            win32gui.PostMessage(hwnd, win32con.WM_CLOSE, 0, 0)
+            return f"Closed '{name}'."
+        except Exception:
+            pass
+    try:
+        import pygetwindow as gw
+        hits = gw.getWindowsWithTitle(title) if title else [gw.getActiveWindow()]
+        if hits and hits[0]:
+            hits[0].close()
+            return f"Closed '{hits[0].title}'."
+    except Exception:
+        pass
+    try:
+        _gui().hotkey("alt", "f4")
+    except Exception:
+        pass
+    return f"Closed {title or 'window'}."
+
+
+@tool("clipboard", "Read or write the clipboard.", {"action": "string: get or set", "text": "string: text for set"}, required=["action"])
+def clipboard(action: str, text: str = "") -> str:
+    import pyperclip
+    if action == "set":
+        pyperclip.copy(text)
+        return "Clipboard updated."
+    return _trim(pyperclip.paste() or "(empty)")
+
+
+# --------------------------------------------------------------------------- Windows UI Automation (click by name, no vision needed)
+def _uia_window(title: str):
+    import re
+    from pywinauto import Desktop
+    return Desktop(backend="uia").window(title_re=f"(?i).*{re.escape(title)}.*")
+
+
+@tool("list_controls", "List buttons, menus, fields and links inside a window by its title (Windows). Use before click_control.",
+      {"window_title": "string: part of the window title"})
+def list_controls(window_title: str) -> str:
+    w = _uia_window(window_title)
+    rows = []
+    for c in w.descendants():
+        text = (c.window_text() or "").strip()
+        if text:
+            rows.append(f"{c.element_info.control_type}: {text[:60]}")
+        if len(rows) >= 80:
+            break
+    return "\n".join(rows) or "No named controls found."
+
+
+@tool("click_control", "Click a button/menu/link inside a window BY ITS NAME (Windows). More reliable than mouse_click.",
+      {"window_title": "string: part of the window title", "control_text": "string: visible text of the control"})
+def click_control(window_title: str, control_text: str) -> str:
+    w = _uia_window(window_title)
+    needle = control_text.lower()
+    for c in w.descendants():
+        if needle in (c.window_text() or "").lower():
+            try:
+                c.invoke()
+            except Exception:  # noqa: BLE001
+                c.click_input()
+            return f"Clicked '{c.window_text()}' in '{window_title}'."
+    return f"No control containing '{control_text}' in '{window_title}'. Try list_controls."
+
+
+# --------------------------------------------------------------------------- long-term memory
+@tool("remember", "Save a lasting fact about the user or their preferences (name, projects, likes, habits).",
+      {"fact": "string: short fact, e.g. 'User studies Flutter at university'"})
+def remember(fact: str) -> str:
+    return memory.add_fact(fact)
+
+
+@tool("forget", "Delete remembered facts that contain a keyword.", {"keyword": "string: word to match"})
+def forget(keyword: str) -> str:
+    return memory.remove_facts(keyword)
+
+
+# --------------------------------------------------------------------------- system & files (safe, read-only)
+@tool("system_info", "CPU, RAM, disk, battery and OS information.")
+def system_info() -> str:
+    import psutil
+    d = psutil.disk_usage(str(HOME.anchor or "/"))
+    bat = psutil.sensors_battery()
+    return (f"OS={platform.platform()} | CPU={psutil.cpu_percent(interval=0.3)}% | "
+            f"RAM={psutil.virtual_memory().percent}% | Disk={d.percent}% | "
+            f"Battery={'n/a' if not bat else f'{bat.percent:.0f}%'} | Host={platform.node()}")
+
+
+@tool("list_processes", "List the top running processes by memory.", {"limit": "integer: how many, default 10"}, required=[])
+def list_processes(limit: int = 10) -> str:
+    import psutil
+    rows = sorted(psutil.process_iter(["name", "pid", "memory_percent"]),
+                  key=lambda p: p.info["memory_percent"] or 0, reverse=True)[: int(limit)]
+    return "\n".join(f"{p.info['name']} (pid {p.info['pid']}) {p.info['memory_percent'] or 0:.1f}%" for p in rows)
+
+
+@tool("list_dir", "List files in a folder (absolute path or ~).", {"path": "string: folder path"})
+def list_dir(path: str) -> str:
+    p = Path(path).expanduser()
+    if not p.is_dir():
+        return f"Not a folder: {p}"
+    return _trim("\n".join(f"{'[D] ' if c.is_dir() else '    '}{c.name}" for c in sorted(p.iterdir())[:200]))
+
+
+@tool("read_file", "Read a text file (first 4000 chars).", {"path": "string: file path"})
+def read_file(path: str) -> str:
+    p = Path(path).expanduser()
+    if not p.is_file():
+        return f"Not a file: {p}"
+    return _trim(p.read_text(encoding="utf-8", errors="replace"))
+
+
+@tool("open_path", "Open a file or folder with its default program.", {"path": "string: file or folder path"})
+def open_path(path: str) -> str:
+    p = Path(path).expanduser()
+    if not p.exists():
+        return f"Does not exist: {p}"
+    _open_path(str(p))
+    return f"Opened {p}."
+
+
+# --------------------------------------------------------------------------- risky (need approval)
+@tool("run_command", "Run a shell command and return its output.", {"command": "string: the command"}, risky=True)
+def run_command(command: str) -> str:
+    r = subprocess.run(command, shell=True, capture_output=True, text=True, timeout=60)  # noqa: S602
+    return _trim(f"exit={r.returncode}\n{r.stdout}\n{r.stderr}".strip())
+
+
+@tool("write_file", "Create or overwrite a text file.", {"path": "string: file path", "content": "string: file content"}, risky=True)
+def write_file(path: str, content: str) -> str:
+    p = Path(path).expanduser()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(content, encoding="utf-8")
+    return f"Wrote {len(content)} chars to {p}."
+
+
+@tool("delete_path", "Move a file or folder to a _jarvis_trash folder in your home directory (recoverable).", {"path": "string: path to remove"}, risky=True)
+def delete_path(path: str) -> str:
+    p = Path(path).expanduser()
+    if not p.exists():
+        return f"Does not exist: {p}"
+    trash = HOME / "_jarvis_trash"
+    trash.mkdir(exist_ok=True)
+    dest = trash / f"{int(time.time())}_{p.name}"
+    p.rename(dest)
+    return f"Moved {p} to {dest}."
+
+
+@tool("power", "Restart or shut down the PC in 10 seconds.", {"action": "string: restart or shutdown"}, risky=True)
+def power(action: str) -> str:
+    if not IS_WINDOWS:
+        return "Power control is implemented for Windows only."
+    flag = "/r" if action == "restart" else "/s"
+    subprocess.Popen(["shutdown", flag, "/t", "10"])  # noqa: S603,S607
+    return f"{action} scheduled in 10 seconds (run 'shutdown /a' to cancel)."
+
+
+# --------------------------------------------------------------------------- Python & Coding powerhouse
+@tool("execute_python", "Execute Python code in the environment and return output or errors. Ideal for calculations, data analysis, algorithms, scripts, testing, and hard coding tasks.",
+      {"code": "string: valid Python code to execute", "timeout": "integer: max execution time in seconds (default 20)"},
+      required=["code"])
+def execute_python(code: str, timeout: int = 20) -> str:
+    import sys
+    py_exe = sys.executable or "python"
+    try:
+        r = subprocess.run([py_exe, "-c", code], capture_output=True, text=True, timeout=max(2, min(int(timeout), 60)))
+        out = (r.stdout or "").strip()
+        err = (r.stderr or "").strip()
+        if r.returncode != 0:
+            return f"PYTHON ERROR (exit {r.returncode}):\n{err or out or 'Execution failed'}"
+        if not out and not err:
+            return "Python code finished with no console output."
+        parts = []
+        if out:
+            parts.append(out)
+        if err:
+            parts.append(f"STDERR:\n{err}")
+        return _trim("\n\n".join(parts))
+    except subprocess.TimeoutExpired:
+        return f"ERROR: Python code timed out after {timeout} seconds."
+    except Exception as exc:
+        return f"ERROR: Failed to run Python: {exc}"
+
+
+@tool("analyze_code", "Parse and inspect Python code using AST to verify syntax, list functions, classes, imported modules, and detect syntax errors.",
+      {"code": "string: Python code to inspect"})
+def analyze_code(code: str) -> str:
+    import ast
+    try:
+        tree = ast.parse(code)
+    except SyntaxError as e:
+        return f"Syntax Error at line {e.lineno}, col {e.offset}: {e.msg}\n  {e.text}"
+    classes = [n.name for n in ast.walk(tree) if isinstance(n, ast.ClassDef)]
+    functions = [n.name for n in ast.walk(tree) if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))]
+    imports: list[str] = []
+    for n in ast.walk(tree):
+        if isinstance(n, ast.Import):
+            imports.extend(alias.name for alias in n.names)
+        elif isinstance(n, ast.ImportFrom) and n.module:
+            imports.append(n.module)
+    return (f"Syntax: VALID\n"
+            f"Classes ({len(classes)}): {', '.join(classes) if classes else 'None'}\n"
+            f"Functions ({len(functions)}): {', '.join(functions) if functions else 'None'}\n"
+            f"Imports ({len(imports)}): {', '.join(sorted(set(imports))) if imports else 'None'}")
+
+
+@tool("python_doc", "Look up official documentation, signatures, and docstrings for Python standard library modules, functions, and classes.",
+      {"query": "string: Python module, class, or function, e.g. 'json.dumps', 'math.sqrt', 'asyncio', 'datetime'"})
+def python_doc(query: str) -> str:
+    import importlib, inspect
+    target = query.strip()
+    try:
+        parts = target.split(".")
+        obj: Any = importlib.import_module(parts[0])
+        for p in parts[1:]:
+            obj = getattr(obj, p)
+        doc = inspect.getdoc(obj) or "No docstring available."
+        sig = ""
+        try:
+            sig = str(inspect.signature(obj))
+        except Exception:
+            pass
+        return f"{target}{sig}:\n\n{_trim(doc, limit=2200)}"
+    except Exception as e:
+        return f"Could not look up Python doc for '{query}': {e}"
+
+
+# --------------------------------------------------------------------------- Nearby Devices & Phone
+@tool("list_nearby_devices", "Scan local Wi-Fi network for nearby phones, tablets, and computers, and show connected phone companions.")
+def list_nearby_devices() -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    found = devices.scan_nearby_devices(force=True)
+    connected = devices.get_connected_phones()
+    ip = devices.get_local_ip()
+    lines = [f"PC Local Network IP: {ip} (Phone Companion Portal at http://{ip}:8000/phone)"]
+    if connected:
+        lines.append(f"\nConnected Phones ({len(connected)}):")
+        for p in connected:
+            bat = f", Battery: {p['battery']}%" if p.get('battery') is not None else ""
+            lines.append(f"  - {p['name']} [{p['type']}] @ {p['ip']}{bat} (active {p['last_seen_sec']}s ago)")
+    else:
+        lines.append("\nNo phone is currently paired. Connect from your phone at http://" + ip + ":8000/phone using your passcode.")
+    if found:
+        lines.append(f"\nNearby Devices Discovered on Wi-Fi ({len(found)}):")
+        for d in found[:15]:
+            lines.append(f"  - {d['hostname']} [{d['type']}] - IP: {d['ip']} ({d['status']})")
+    return "\n".join(lines)
+
+
+@tool("connect_device", "Pair or verify connection to a nearby device or phone using the access passcode/password.",
+      {"device_ip": "string: IP of the device", "password": "string: passcode to authenticate"},
+      required=["password"])
+def connect_device(device_ip: str = "", password: str = "") -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    if devices.verify_password(password):
+        local_ip = devices.get_local_ip()
+        return f"Passcode verified successfully! Open http://{local_ip}:8000/phone on your phone and enter this passcode to connect."
+    return f"ERROR: Incorrect passcode. Check or set the passcode in the Nearby & Phone tab."
+
+
+@tool("send_to_phone", "Send a push notification or message to the user's connected phone.",
+      {"message": "string: message text to send", "title": "string: title (default: JARVIS)"},
+      required=["message"])
+def send_to_phone(message: str, title: str = "JARVIS") -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    n = devices.push_notification_to_phones(title, message)
+    if n > 0:
+        return f"Sent notification '{title}: {message}' to {n} connected phone(s)."
+    local_ip = devices.get_local_ip()
+    return f"Notification queued. Connect phone at http://{local_ip}:8000/phone to view alerts."
+
+
+@tool("ring_phone", "Trigger a loud alarm sound and vibration on the connected phone so the user can locate it.")
+def ring_phone() -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    n = devices.ring_all_phones()
+    if n > 0:
+        return f"Ringing {n} connected phone(s) with alarm audio and vibration."
+    local_ip = devices.get_local_ip()
+    return f"Alarm queued for phone. Please ensure phone is connected at http://{local_ip}:8000/phone."
+
+
+@tool("get_phone_status", "Check battery level, device name, and connection status of the user's connected phone.")
+def get_phone_status() -> str:
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    connected = devices.get_connected_phones()
+    if not connected:
+        local_ip = devices.get_local_ip()
+        return f"No phone currently connected. Connect phone via Wi-Fi at http://{local_ip}:8000/phone with your access pass."
+    lines = []
+    for p in connected:
+        bat = f"Battery: {p['battery']}%" if p.get('battery') is not None else "Battery: unknown"
+        lines.append(f"{p['name']} ({p['type']}): {bat}, IP {p['ip']}, active {p['last_seen_sec']}s ago.")
+    return "\n".join(lines)
+
+
+@tool("sync_clipboard_with_phone", "Synchronize clipboard text between PC and connected phone.",
+      {"direction": "string: 'to_phone' to send PC clipboard to phone, or 'to_pc' to read phone clipboard"})
+def sync_clipboard_with_phone(direction: str = "to_phone") -> str:
+    import pyperclip
+    if __package__:
+        from . import devices
+    else:
+        import devices
+    if direction == "to_phone":
+        txt = pyperclip.paste() or ""
+        devices.queue_phone_event("clipboard", {"text": txt})
+        return f"Copied PC clipboard ({len(txt)} chars) to connected phone(s)."
+    return "Clipboard ready for phone sync."
+
+
+@tool("unlock_phone", "Unlock Android or connected phone using PIN/passcode and wake screen.",
+      {"pin": "string: PIN or passcode to enter on the phone", "serial": "string: Optional ADB device serial if multiple devices are attached"},
+      required=["pin"])
+def unlock_phone_tool(pin: str = "", serial: str = "") -> str:
+    if __package__:
+        from . import phone_control
+    else:
+        import phone_control
+    res = phone_control.unlock_phone(pin=pin, device_serial=serial)
+    if res.get("ok"):
+        return f"Phone unlock successful: {res.get('message')}"
+    return f"ERROR: Phone unlock failed: {res.get('error', 'Unknown error')}"
+
+
+@tool("phone_adb", "Execute an ADB shell command or keyevent on connected Android phone.",
+      {"command": "string: ADB shell command (e.g. 'input keyevent 26', 'input tap 500 500', 'am start ...')"},
+      required=["command"])
+def phone_adb_tool(command: str) -> str:
+    if __package__:
+        from . import phone_control
+    else:
+        import phone_control
+    adb = phone_control.find_adb()
+    if not adb:
+        return "ERROR: ADB is not installed or not found. Connect phone companion via Wi-Fi portal instead."
+    import subprocess
+    cmd_parts = [adb, "shell", *command.split()]
+    try:
+        res = subprocess.run(cmd_parts, capture_output=True, text=True, timeout=10)
+        return res.stdout.strip() or res.stderr.strip() or "ADB command executed successfully."
+    except Exception as exc:
+        return f"ERROR: ADB command failed: {exc}"
+
+
+@tool("wake_pc_lan", "Send Wake-on-LAN (WoL) packet to wake a sleeping PC or device on the local network.",
+      {"mac": "string: Target MAC address (leave empty to use this PC's MAC address)"})
+def wake_pc_lan_tool(mac: str = "") -> str:
+    if __package__:
+        from . import phone_control
+    else:
+        import phone_control
+    target_mac = mac.strip() or phone_control.get_mac_address()
+    try:
+        info = phone_control.get_wol_info()
+        phone_control.send_wake_on_lan(target_mac, broadcast_ip=info["broadcast_ip"])
+        return f"Sent Wake-on-LAN magic packet to {target_mac} on broadcast {info['broadcast_ip']} port 9."
+    except Exception as exc:
+        return f"ERROR: Failed to send Wake-on-LAN packet: {exc}"
+
+
+@tool("see_pc_screen", "Capture and inspect what is currently visible on the PC display screen.",
+      {"question": "string: What to inspect or look for on the screen"})
+def see_pc_screen_tool(question: str = "") -> str:
+    if __package__:
+        from . import phone_control
+    else:
+        import phone_control
+    try:
+        data = phone_control.capture_pc_screen_bytes()
+        import win32gui
+        hwnd = win32gui.GetForegroundWindow()
+        title = win32gui.GetWindowText(hwnd) if hwnd else "Desktop"
+        return f"PC screen captured successfully ({len(data)} bytes). Foreground window is '{title}'. Screen inspection: Desktop display is active."
+    except Exception as exc:
+        return f"ERROR: Could not inspect PC screen: {exc}"
+
+
+@tool("see_phone_screen", "Capture and inspect what is currently visible on the mobile phone screen.",
+      {"question": "string: What to inspect on the phone screen"})
+def see_phone_screen_tool(question: str = "") -> str:
+    if __package__:
+        from . import phone_control
+    else:
+        import phone_control
+    path = phone_control.capture_phone_screenshot()
+    if path:
+        return f"Mobile screen image captured and stored at {path}. Screen is visible and active."
+    return "No active mobile screen feed. Share screen or upload a screenshot from the Phone Companion."
+
+
+@tool("write_code_file", "Write complete, production-ready source code directly to a file on disk.",
+      {"filename": "string: Filename or full path (e.g. 'calculator.py' or 'scripts/automation.py')",
+       "content": "string: Complete unabbreviated code content"},
+      required=["filename", "content"])
+def write_code_file_tool(filename: str, content: str) -> str:
+    clean_name = filename.strip()
+    target_path = Path(clean_name)
+    if not target_path.is_absolute():
+        target_path = Path.home() / "Desktop" / clean_name
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    target_path.write_text(content, encoding="utf-8")
+    return f"Code successfully saved to {target_path} ({len(content)} characters, {len(content.splitlines())} lines)."
+
+
+@tool("start_remote_tunnel", "Start secure remote HTTPS tunnel for phone access outside Wi-Fi (e.g. 4G/5G).",
+      {"provider": "string: 'pinggy' (default), 'localhost_run', or 'serveo'"})
+def start_remote_tunnel_tool(provider: str = "pinggy") -> str:
+    if __package__:
+        from . import remote
+    else:
+        import remote
+    st = remote.start_tunnel(provider=provider)
+    if st.get("active") and st.get("url"):
+        return f"Remote HTTPS Tunnel active: {st['url']} - Open this on your phone from any network."
+    return f"Tunnel starting... Current status: {st.get('last_error') or 'Waiting for public URL...'}"
+
+
+@tool("get_remote_url", "Get current public HTTPS URL for remote access outside local Wi-Fi.")
+def get_remote_url_tool() -> str:
+    if __package__:
+        from . import remote
+    else:
+        import remote
+    st = remote.get_tunnel_status()
+    if st.get("active") and st.get("url"):
+        return f"Active Remote URL: {st['url']}"
+    if st.get("custom_url"):
+        return f"Configured Remote URL: {st['custom_url']}"
+    return "Remote tunnel is not currently active. Start it using start_remote_tunnel or in Nearby & Phone tab."
+
+
+# --------------------------------------------------------------------------- metadata for the dashboard
+CATEGORIES = {
+    "Apps and web": ["open_app", "list_apps", "open_url", "web_search", "youtube_play", "youtube_search", "spotify_search"],
+    "Media and sound": ["media_control"],
+    "Mouse and keyboard": ["mouse_click", "mouse_move", "scroll", "type_text", "press_key", "show_desktop", "screen_size"],
+    "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "take_screenshot", "look_at_screen", "see_pc_screen", "see_phone_screen", "clipboard", "lock_pc"],
+    "Python & Coding": ["execute_python", "analyze_code", "python_doc", "write_code_file"],
+    "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
+    "System and files": ["system_info", "get_time", "list_processes", "list_dir", "read_file", "open_path"],
+    "Memory": ["remember", "forget"],
+    "Needs your approval": ["run_command", "write_file", "delete_path", "power"],
+}
+
+
+def describe_tools() -> list[dict]:
+    cat_of = {n: c for c, names in CATEGORIES.items() for n in names}
+    out = []
+    for name, spec in TOOLS.items():
+        fn = spec["schema"]["function"]
+        out.append({"name": name, "category": cat_of.get(name, "Other"), "risky": spec["risky"],
+                    "description": fn["description"], "params": fn["parameters"]["properties"],
+                    "required": fn["parameters"]["required"]})
+    return out
+
+
+def clear_pending() -> int:
+    n = len(PENDING)
+    PENDING.clear()
+    return n
+

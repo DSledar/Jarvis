@@ -1,0 +1,9 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+*.sqlite3
+data/settings.json
+data/remote_settings.json
+data/screen_captures/
+.DS_Store
