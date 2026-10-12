@@ -31,6 +31,10 @@
     <div class="voice-dock">
       <div class="voice-line"><span id="voiceStatus">Standby</span><div class="bars" id="voiceBars" aria-hidden="true"></div></div>
       <button id="voiceBtn" class="talk-btn"><svg class="ic"><use href="#i-mic"/></svg><span id="voiceBtnText">Talk to JARVIS</span></button>
+      <div class="row" style="margin:2px 0; font-size:12px;">
+        <span class="muted" title="Always listening for 'Wake up JARVIS' or 'Goodbye JARVIS'">Wake word: "Wake up"</span>
+        <button id="wakeWordToggle" class="mini toggle on" aria-pressed="true" title="Toggle background wake-word listening">Armed</button>
+      </div>
       <label class="field-inline">Voice language <select id="langSelect"></select></label>
       <div class="row">
         <button id="speakToggle" class="toggle on" aria-pressed="true">Voice replies: on</button>
@@ -46,7 +50,9 @@
       <div class="chip" id="brainChip"><i class="dot"></i><span id="brainText">Starting...</span></div>
       <div class="clock"><span id="timeText">--:--:--</span><small id="dateText"></small></div>
       <div class="top-actions">
-        <button id="cameraBtn" class="ghost"><svg class="ic"><use href="#i-camera"/></svg>Camera</button>
+        <button id="wakeBtn" class="primary" title="Trigger Wake-up Video & Systems"><svg class="ic"><use href="#i-bolt"/></svg>Wake Up</button>
+        <button id="sleepBtn" class="ghost" title="Enter Sleep Mode"><svg class="ic"><use href="#i-moon"/></svg>Sleep Mode</button>
+        <button id="cameraBtn" class="ghost" title="Live Cam Vision Interaction"><svg class="ic"><use href="#i-camera"/></svg>Live Cam Vision</button>
         <button id="locationBtn" class="ghost"><svg class="ic"><use href="#i-pin"/></svg>Location</button>
         <button id="searchBtn" class="ghost"><svg class="ic"><use href="#i-search"/></svg>Search</button>
       </div>
@@ -466,9 +472,87 @@
 </div>
 
 <!-- ============================== modals ============================== -->
-<div id="cameraModal" class="modal hidden" role="dialog" aria-label="Camera">
-  <div class="modal-card wide"><div class="modal-head"><h3>Camera</h3><button class="icon-btn" data-close>Close</button></div>
-    <video id="cameraVideo" autoplay playsinline muted></video><p class="muted" id="cameraStatus">Waiting for permission...</p></div>
+<!-- Cinematic Wake Up Overlay -->
+<div id="wakeUpOverlay" class="wake-overlay hidden" role="dialog" aria-label="Wake Up JARVIS">
+  <div class="wake-backdrop"></div>
+  <div class="wake-modal">
+    <div class="wake-scanlines"></div>
+    <div class="wake-header">
+      <div class="wake-brand">
+        <div class="wake-arc-reactor"></div>
+        <div>
+          <b>J.A.R.V.I.S COMMAND SYSTEM</b>
+          <small id="wakeSubtitle">BOOT SEQUENCE // AUDIO SENSORS ARMED</small>
+        </div>
+      </div>
+      <button id="btnSkipWake" class="ghost mini">✕ Dismiss / Enter</button>
+    </div>
+
+    <div class="wake-video-frame">
+      <iframe id="wakeVideoFrame" src="" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0"></iframe>
+      <div class="wake-scanlines"></div>
+    </div>
+
+    <div class="wake-footer">
+      <div class="wake-status-line">
+        <span class="wake-dot"></span>
+        <span id="wakeStatusText">"Welcome back, Sir. All systems initialized and online."</span>
+      </div>
+      <div class="wake-buttons" style="display:flex; gap:8px;">
+        <button id="btnWakeEnter" class="primary">Enter Command Center</button>
+        <button id="btnWakeReplay" class="ghost">Replay Video</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upgraded Live Cam Vision Modal -->
+<div id="cameraModal" class="modal hidden" role="dialog" aria-label="Live Cam Vision">
+  <div class="modal-card wide live-cam-card">
+    <div class="modal-head">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="wake-dot"></span>
+        <h3 style="margin:0;">🎥 Live Cam Vision & Voice Interaction</h3>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="chip ok mini" id="camVisionStatus"><i class="dot"></i><span>Vision Active</span></span>
+        <button class="icon-btn" data-close title="Close Camera">✕</button>
+      </div>
+    </div>
+    
+    <div class="live-cam-container">
+      <div class="live-cam-viewport">
+        <video id="cameraVideo" autoplay playsinline muted></video>
+        <div class="hud-reticle">
+          <div class="hud-corners top-left"></div>
+          <div class="hud-corners top-right"></div>
+          <div class="hud-corners bottom-left"></div>
+          <div class="hud-corners bottom-right"></div>
+          <div class="hud-crosshair"></div>
+          <div class="hud-info-badge">TARGET: MULTIMODAL VISUAL ANALYSIS // LIVE</div>
+        </div>
+      </div>
+
+      <div class="live-cam-sidebar">
+        <div class="live-cam-transcript-box" style="display:flex; flex-direction:column; flex:1;">
+          <div style="font-size:13px; color:var(--cyan); margin-bottom:6px; font-weight:600;">🎙️ Speak Naturally with JARVIS</div>
+          <div id="camTranscriptLog" class="cam-transcript-log">
+            <div class="cam-bubble bot">Hello Sir. I can see you through the camera. Speak anytime or ask me what I see.</div>
+          </div>
+        </div>
+
+        <form id="camVoiceForm" class="cam-input-bar">
+          <input id="camVoiceInput" placeholder="Speak aloud or type: What do you see?" autocomplete="off" />
+          <button type="submit" class="primary" id="btnCamAsk">Ask</button>
+        </form>
+
+        <div class="row-btns" style="gap:6px; flex-wrap:wrap; margin-top:8px;">
+          <button type="button" class="primary" id="btnCamSnapshot"><svg class="ic"><use href="#i-camera"/></svg>Snapshot & Analyze</button>
+          <button type="button" class="ghost" id="btnCamToggleMic"><svg class="ic"><use href="#i-mic"/></svg><span id="camMicLabel">Mic: Listening</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 <div id="searchModal" class="modal hidden" role="dialog" aria-label="Search">
   <form class="modal-card" id="searchForm"><div class="modal-head"><h3>Search</h3><button type="button" class="icon-btn" data-close>Close</button></div>
@@ -537,6 +621,7 @@ git push -u origin main</pre>
     <symbol id="i-code" viewBox="0 0 24 24"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
     <symbol id="i-min" viewBox="0 0 24 24"><line x1="4" y1="20" x2="20" y2="20"/></symbol>
     <symbol id="i-max" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
   </defs>
 </svg>
 <script src="/app.js"></script>

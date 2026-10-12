@@ -149,6 +149,13 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
     core = _strip_filler(words) or words
 
     # ---- greetings / thanks / help
+    if re.search(r"\b(wake up jarvis|wake up|jarvis wake up|wake up buddy|wake jarvis|boot up jarvis)\b|هەڵسە جارڤیس|بەخەبەر وەرە|استيقظ جارفيس|استيقظ", text):
+        return Plan(say=lambda r: "بەخێربێیتەوە گەورەم، هەموو سیستەمەکان ئامادەن و گوێت لێ دەگرم." if lang == "ku" else "Welcome back, Sir. All systems initialized and online.", name="wake_jarvis")
+    if re.search(r"\b(goodbye jarvis|goodby jarvis|good bye jarvis|go to sleep jarvis|go to sleep|sleep jarvis|sleep mode|bye jarvis)\b|خوات لەگەڵ جارڤیس|خوات لەگەڵ|بخەوە جارڤیس|تەواو بخەوە|دەتوانیت بخەویت|الى اللقاء جارفيس|نم جارفيس", text):
+        return Plan(say=lambda r: "دەچمە دۆخی خەوتنەوە گەورەم. هەر کاتێک وتت هەڵسە جارڤیس، دەگەڕێمەوە خزمەتت." if lang == "ku" else "Entering sleep mode, Sir. Call me whenever you need me.", name="sleep_jarvis")
+    if re.search(r"\b(open camera|start camera|live cam|camera vision|look at this|see this|webcam)\b|کامێرا بکەرەوە|سەیری ئەمە بکە|افتح الكاميرا", text):
+        return Plan(say=lambda r: "کامێرای ڕاستەوخۆ کرایەوە، فەرموو سەیری دەکەم و گوێم لێتە." if lang == "ku" else "Opening Live Camera Vision. I am watching and listening.", name="open_camera")
+
     if text in {"hi", "hello", "hey", "hey jarvis", "hi jarvis", "hello jarvis", "good morning", "good evening", "good afternoon",
                 "jarvis", "yo", "سلام", "مرحبا", "اهلا", "أهلا", "هلا", "سڵاو", "سلاو", "چۆنی", "چۆنیت", "باشی", "کەیفت چۆنە", "چۆنی گیان", "سڵاو لە تۆ", "بەیانیت باش", "ئێوارەت باش"}:
         return Plan(say=lambda r: _t("hello", lang), name="greet")

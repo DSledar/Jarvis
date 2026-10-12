@@ -11,8 +11,11 @@ const state = {
   sessionId: LS.get('jarvis_session_id', '') || (crypto.randomUUID ? crypto.randomUUID() : String(Date.now())),
   speakReplies: LS.get('jarvis_speak', '1') === '1',
   voiceLang: LS.get('jarvis_lang', ''),
+  wakeWordEnabled: LS.get('jarvis_wake_word', '1') === '1',
+  isSleeping: false,
   handsFree: false, busy: false, speaking: false, rec: null, aiReady: false, aiOffline: false,
   pending: [], seenPending: new Set(),
+  cam: null, camActive: false, camMicActive: true
 };
 LS.set('jarvis_session_id', state.sessionId);
 
@@ -56,17 +59,34 @@ setInterval(tick, 1000); tick();
 
 function refreshUI() {
   let s = 'idle', title = 'Ready', hint = 'Type a command, or press Talk and just speak.', label = 'Standby';
-  if (state.busy) { s = 'thinking'; title = 'Working on it'; hint = 'One moment, Sir.'; label = 'Thinking'; }
-  else if (state.speaking) { s = 'speaking'; title = 'Speaking'; hint = 'Press the stop button to interrupt.'; label = 'Speaking'; }
-  else if (state.rec) { s = 'listening'; title = 'Listening'; hint = 'Go ahead, I am listening.'; label = 'Listening'; }
-  else if (state.handsFree) { label = 'Hands-free'; hint = 'Hands-free is on. Speak whenever you like.'; }
+  if (state.isSleeping) {
+    s = 'sleep';
+    title = '💤 Sleep Mode (Standby)';
+    hint = 'Say "Wake up JARVIS" or press Wake Up to bring me online.';
+    label = 'Sleeping';
+  } else if (state.busy) {
+    s = 'thinking'; title = 'Working on it'; hint = 'One moment, Sir.'; label = 'Thinking';
+  } else if (state.speaking) {
+    s = 'speaking'; title = 'Speaking'; hint = 'Press the stop button to interrupt.'; label = 'Speaking';
+  } else if (state.rec) {
+    s = 'listening'; title = 'Listening'; hint = 'Go ahead, I am listening.'; label = 'Listening';
+  } else if (state.handsFree) {
+    label = 'Hands-free'; hint = 'Hands-free is on. Speak whenever you like.';
+  }
+  document.body.classList.toggle('jarvis-sleeping', state.isSleeping);
   $('#orb').dataset.state = s;
   $('#stateText').textContent = title; $('#stateHint').textContent = hint; $('#voiceStatus').textContent = label;
   $('#voiceBars').classList.toggle('on', s === 'listening' || s === 'speaking');
   $('#voiceBtn').classList.toggle('live', state.handsFree);
-  $('#voiceBtnText').textContent = state.handsFree ? 'Stop hands-free' : 'Talk to JARVIS';
+  $('#voiceBtnText').textContent = state.isSleeping ? 'Wake Up JARVIS' : (state.handsFree ? 'Stop hands-free' : 'Talk to JARVIS');
   $('#micInline').classList.toggle('live', !!state.rec);
   $('#stopSpeak').classList.toggle('hidden', !state.speaking);
+  const wakeToggle = $('#wakeWordToggle');
+  if (wakeToggle) {
+    wakeToggle.textContent = state.wakeWordEnabled ? 'Armed' : 'Off';
+    wakeToggle.classList.toggle('on', state.wakeWordEnabled);
+    wakeToggle.setAttribute('aria-pressed', state.wakeWordEnabled);
+  }
 }
 
 /* ------------------------------------------------------------------ activity log */
@@ -100,9 +120,209 @@ function addChips(div, names, results) {
   div.append(row);
 }
 
+/* ------------------------------------------------------------------ Web Audio Synthesizer */
+let audioCtx = null;
+function getAudioContext() {
+  if (!audioCtx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    if (AC) audioCtx = new AC();
+  }
+  if (audioCtx && audioCtx.state === 'suspended') {
+    audioCtx.resume().catch(() => {});
+  }
+  return audioCtx;
+}
+
+function playWakeChime() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freqs = [440, 659.25, 880, 1174.66];
+    freqs.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.08);
+      gain.gain.setValueAtTime(0, now + idx * 0.08);
+      gain.gain.linearRampToValueAtTime(0.2, now + idx * 0.08 + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.08 + 0.45);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.08);
+      osc.stop(now + idx * 0.08 + 0.5);
+    });
+  } catch {}
+}
+
+function playSleepChime() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const freqs = [880, 587.33, 440, 293.66];
+    freqs.forEach((freq, idx) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+      gain.gain.setValueAtTime(0, now + idx * 0.1);
+      gain.gain.linearRampToValueAtTime(0.18, now + idx * 0.1 + 0.03);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.1 + 0.55);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + idx * 0.1);
+      osc.stop(now + idx * 0.1 + 0.6);
+    });
+  } catch {}
+}
+
+function playBlipSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(987.77, now);
+    osc.frequency.exponentialRampToValueAtTime(1318.51, now + 0.07);
+    gain.gain.setValueAtTime(0.15, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.1);
+  } catch {}
+}
+
+function playVisionScanSound() {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(500, now);
+    osc.frequency.exponentialRampToValueAtTime(1800, now + 0.22);
+    gain.gain.setValueAtTime(0.08, now);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.25);
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.start(now);
+    osc.stop(now + 0.26);
+  } catch {}
+}
+
+/* ------------------------------------------------------------------ Phrase matchers */
+function normalizePhrase(text) {
+  return (text || '').toLowerCase().replace(/[.,!?;:ـ\-_]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function isWakePhrase(raw) {
+  const t = normalizePhrase(raw);
+  if (!t) return false;
+  if (/\b(wake\s*up(\s+jarvis|\s+buddy)?|jarvis\s+wake\s*up|wake\s+jarvis|boot\s*up\s+jarvis|online\s+jarvis|hey\s+jarvis|hi\s+jarvis)\b/i.test(t)) return true;
+  if (/(?:هەڵسە|هەستە|بەخەبەر\s*وەرە|بەخەبەر\s*بێ|وەخەبەر\s*وەرە)(?:\s+جارڤیس)?/i.test(t)) return true;
+  if (/(?:استيقظ|اصحى|استفق)(?:\s+جارفيس|\s+جارفس)?/i.test(t)) return true;
+  if (/\b(wek\s*up|waik\s*up|wake\s*ap|jarves\s*wake)\b/i.test(t)) return true;
+  return false;
+}
+
+function isSleepPhrase(raw) {
+  const t = normalizePhrase(raw);
+  if (!t) return false;
+  if (/\b(good\s*bye|goodby|good\s*by|bye\s+jarvis|go\s+to\s+sleep|sleep\s+jarvis|sleep\s+mode|shut\s*down\s+jarvis|rest\s+jarvis)\b/i.test(t)) return true;
+  if (/(?:خوات\s*لەگەڵ|بخەوە|دەتوانیت\s*بخەویت|تەواو\s*بخەوە)(?:\s+جارڤیس)?/i.test(t)) return true;
+  if (/(?:الى\s*اللقاء|مع\s*السلامة|نم\s+جارفيس|اذهب\s+للنوم)/i.test(t)) return true;
+  return false;
+}
+
+function isCamPhrase(raw) {
+  const t = normalizePhrase(raw);
+  if (!t) return false;
+  if (/\b(open\s+camera|start\s+camera|live\s+cam|camera\s+vision|webcam|take\s+a\s+look|look\s+at\s+this|see\s+this)\b/i.test(t)) return true;
+  if (/(?:کامێرا\s*بکەرەوە|کامێرا\s*پێبکە|سەیری\s*ئەمە\s*بکە|سەیری\s*کامێرا\s*بکە)/i.test(t)) return true;
+  if (/(?:افتح\s*الكاميرا|شغل\s*الكاميرا|انظر\s*الى\s*هذا)/i.test(t)) return true;
+  return false;
+}
+
+/* ------------------------------------------------------------------ Wake / Sleep sequence handlers */
+function triggerWakeUpSequence(playVideo = true) {
+  state.isSleeping = false;
+  state.handsFree = true;
+  LS.set('jarvis_speak', '1');
+  state.speakReplies = true;
+  syncSpeakBtn();
+  refreshUI();
+  playWakeChime();
+
+  const overlay = $('#wakeUpOverlay');
+  const iframe = $('#wakeVideoFrame');
+  const status = $('#wakeStatusText');
+  const subtitle = $('#wakeSubtitle');
+
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    if (subtitle) subtitle.textContent = 'BOOT SEQUENCE INITIALIZED // AUDIO SENSORS ARMED';
+    if (status) status.textContent = '"Welcome back, Sir. All systems initialized and online."';
+    if (playVideo && iframe) {
+      iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
+    }
+  }
+
+  logActivity('JARVIS systems online (Wake-up sequence initiated)', true);
+  toast('Welcome back, Sir. JARVIS is awake!');
+  speak('Welcome back, Sir. All systems are initialized and online.');
+  startBackgroundVoiceListener();
+}
+
+function dismissWakeOverlay() {
+  const overlay = $('#wakeUpOverlay');
+  const iframe = $('#wakeVideoFrame');
+  if (iframe) iframe.src = '';
+  if (overlay) overlay.classList.add('hidden');
+}
+
+function triggerSleepMode() {
+  state.isSleeping = true;
+  stopSpeaking();
+  if (state.camActive) closeLiveCamVision();
+  playSleepChime();
+  refreshUI();
+
+  logActivity('JARVIS entered sleep mode (Standby)', true);
+  addMsg('bot', '💤 Entering sleep mode, Sir. Audio sensors remain armed in the background. Say "Wake up JARVIS" anytime.');
+  toast('JARVIS is now asleep. Say "Wake up JARVIS" to wake me.');
+  speak('Good night, Sir. Audio sensors remain armed. Call me whenever you need me.');
+
+  if (state.wakeWordEnabled) {
+    startBackgroundVoiceListener();
+  }
+}
+
 async function sendChat(message) {
   message = (message || '').trim();
   if (!message) return;
+
+  if (isWakePhrase(message)) {
+    triggerWakeUpSequence(true);
+    return;
+  }
+  if (isSleepPhrase(message)) {
+    triggerSleepMode();
+    return;
+  }
+  if (isCamPhrase(message)) {
+    openLiveCamVision();
+    return;
+  }
+  if (state.isSleeping) {
+    state.isSleeping = false;
+    refreshUI();
+  }
+
   if (state.busy) { toast('One moment, I am still working on the last request.'); return; }
   showView('command');
   stopSpeaking();
@@ -138,12 +358,27 @@ async function sendChat(message) {
   chatLog.scrollTop = chatLog.scrollHeight;
   state.busy = false; refreshUI();
   await speak(answer);
-  if (state.handsFree) listenOnce();
+  if (state.handsFree || state.wakeWordEnabled) startBackgroundVoiceListener();
 }
 
 $('#chatForm').addEventListener('submit', (e) => { e.preventDefault(); sendChat($('#chatInput').value); });
-$('#micInline').addEventListener('click', () => { if (state.rec) state.rec.stop(); else { state.speakReplies = true; syncSpeakBtn(); listenOnce(); } });
-$('#stopSpeak').addEventListener('click', () => { stopSpeaking(); if (state.handsFree) listenOnce(); });
+$('#micInline').addEventListener('click', () => {
+  if (state.isSleeping) {
+    triggerWakeUpSequence(true);
+    return;
+  }
+  if (state.rec) {
+    stopVoiceListener();
+  } else {
+    state.speakReplies = true;
+    syncSpeakBtn();
+    startBackgroundVoiceListener();
+  }
+});
+$('#stopSpeak').addEventListener('click', () => {
+  stopSpeaking();
+  if (state.handsFree || state.wakeWordEnabled) startBackgroundVoiceListener();
+});
 
 (function suggestions() {
   const box = $('#suggest');
@@ -241,6 +476,9 @@ refreshStatus(); refreshDiagnose(); setInterval(refreshStatus, 3000); setInterva
 
 /* ------------------------------------------------------------------ quick action tiles */
 const TILES = [
+  ['Wake JARVIS', 'i-bolt', () => triggerWakeUpSequence(true)],
+  ['Sleep Mode', 'i-moon', () => triggerSleepMode()],
+  ['Live Cam', 'i-camera', () => openLiveCamVision()],
   ['Spotify', 'i-music', () => runTool('open_app', { name: 'spotify' }, 'Spotify')],
   ['YouTube', 'i-video', () => runTool('open_url', { url: 'https://www.youtube.com' }, 'YouTube')],
   ['Chrome', 'i-globe', () => runTool('open_app', { name: 'chrome' }, 'Chrome')],
@@ -1109,16 +1347,182 @@ $('#btnSleepPcDash')?.addEventListener('click', async () => {
   }
 });
 
-/* ------------------------------------------------------------------ top bar: camera, location, search */
-async function cameraStart() {
-  $('#cameraModal').classList.remove('hidden'); $('#cameraStatus').textContent = 'Waiting for permission...';
+/* ------------------------------------------------------------------ Live Cam Vision & Voice Interaction */
+async function openLiveCamVision() {
+  if (state.isSleeping) {
+    state.isSleeping = false;
+    refreshUI();
+  }
+  const modal = $('#cameraModal');
+  if (!modal) return;
+  modal.classList.remove('hidden');
+  const video = $('#cameraVideo');
+  const statusChip = $('#camVisionStatus');
+  if (statusChip) statusChip.innerHTML = '<i class="dot"></i><span>Initializing Camera...</span>';
   try {
-    state.cam = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    $('#cameraVideo').srcObject = state.cam; $('#cameraStatus').textContent = 'Camera is on. Close this window to turn it off.';
-  } catch (e) { $('#cameraStatus').textContent = `Camera unavailable: ${e.message}. Allow the camera in the address bar.`; }
+    if (state.cam) {
+      state.cam.getTracks().forEach((t) => t.stop());
+    }
+    state.cam = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+      audio: false
+    });
+    if (video) video.srcObject = state.cam;
+    state.camActive = true;
+    if (statusChip) statusChip.innerHTML = '<i class="dot"></i><span>Vision Active</span>';
+    playVisionScanSound();
+    appendCamTranscript('bot', 'Hello Sir. I can see you clearly through the camera. Speak aloud or ask me what I see.');
+    speak('Camera vision active, Sir. I am watching and listening.');
+    startBackgroundVoiceListener();
+  } catch (err) {
+    if (statusChip) statusChip.innerHTML = '<i class="dot" style="background:var(--red);"></i><span>Camera Failed</span>';
+    toast(`Camera error: ${err.message}. Please allow camera access in the address bar.`, true);
+    appendCamTranscript('bot', `Could not access camera: ${err.message}`);
+  }
 }
-function cameraStop() { state.cam?.getTracks().forEach((t) => t.stop()); state.cam = null; $('#cameraVideo').srcObject = null; }
-$('#cameraBtn').addEventListener('click', cameraStart);
+
+function closeLiveCamVision() {
+  if (state.cam) {
+    state.cam.getTracks().forEach((t) => t.stop());
+    state.cam = null;
+  }
+  const video = $('#cameraVideo');
+  if (video) video.srcObject = null;
+  state.camActive = false;
+  $('#cameraModal')?.classList.add('hidden');
+}
+
+function captureLiveCamFrame() {
+  const video = $('#cameraVideo');
+  if (!video || !video.videoWidth) return null;
+  const canvas = document.createElement('canvas');
+  canvas.width = Math.min(video.videoWidth, 1280);
+  canvas.height = Math.min(video.videoHeight, 720);
+  const ctx = canvas.getContext('2d');
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+  return canvas.toDataURL('image/jpeg', 0.85);
+}
+
+function appendCamTranscript(role, text) {
+  const log = $('#camTranscriptLog');
+  if (!log) return null;
+  const bubble = el('div', `cam-bubble ${role}`, text);
+  log.append(bubble);
+  log.scrollTop = log.scrollHeight;
+  return bubble;
+}
+
+async function sendCamQuery(message) {
+  message = (message || '').trim();
+  if (!message) message = 'What do you see in the camera right now? Please describe in detail.';
+  if (state.busy) {
+    toast('One moment, I am analyzing the previous view.');
+    return;
+  }
+  const frame = captureLiveCamFrame();
+  playVisionScanSound();
+  appendCamTranscript('user', message);
+  const botBubble = appendCamTranscript('bot', 'Analyzing visual feed...');
+  stopSpeaking();
+  state.busy = true;
+  refreshUI();
+
+  let answer = '', isErr = false;
+  try {
+    const res = await fetch('/api/chat/stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message, session_id: state.sessionId, image: frame || undefined })
+    });
+    if (!res.ok || !res.body) throw new Error(`Server error ${res.status}`);
+    const reader = res.body.getReader(), dec = new TextDecoder();
+    let buf = '';
+    const handle = (ev) => {
+      if (ev.type === 'status' || ev.type === 'tool') botBubble.textContent = ev.text || `Working: ${ev.name}`;
+      else if (ev.type === 'error') throw new Error(ev.text);
+      else if (ev.type === 'final') { answer = ev.text; isErr = !!ev.error; }
+    };
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (line) handle(JSON.parse(line));
+      }
+    }
+    if (!answer) throw new Error('No answer came back.');
+  } catch (err) {
+    answer = `Visual analysis failed: ${err.message}`;
+    isErr = true;
+  }
+
+  botBubble.textContent = answer;
+  if (isErr) botBubble.classList.add('err');
+  logActivity(`Vision query: ${message}`, !isErr);
+  addMsg('user', `[Live Cam Vision] ${message}`);
+  addMsg('bot', answer);
+
+  state.busy = false;
+  refreshUI();
+  await speak(answer);
+  if (state.camActive && state.camMicActive) {
+    startBackgroundVoiceListener();
+  }
+}
+
+/* ------------------------------------------------------------------ top bar: camera, location, search */
+$('#cameraBtn')?.addEventListener('click', openLiveCamVision);
+$('#wakeBtn')?.addEventListener('click', () => triggerWakeUpSequence(true));
+$('#sleepBtn')?.addEventListener('click', () => triggerSleepMode());
+
+$('#btnSkipWake')?.addEventListener('click', dismissWakeOverlay);
+$('#btnWakeEnter')?.addEventListener('click', dismissWakeOverlay);
+$('#btnWakeReplay')?.addEventListener('click', () => {
+  const iframe = $('#wakeVideoFrame');
+  if (iframe) {
+    iframe.src = '';
+    setTimeout(() => {
+      iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
+    }, 150);
+  }
+});
+
+$('#btnCamSnapshot')?.addEventListener('click', () => {
+  sendCamQuery('Analyze what you see in the camera right now in detail.');
+});
+$('#camVoiceForm')?.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const text = $('#camVoiceInput')?.value.trim();
+  if (!text) return;
+  $('#camVoiceInput').value = '';
+  sendCamQuery(text);
+});
+$('#btnCamToggleMic')?.addEventListener('click', () => {
+  state.camMicActive = !state.camMicActive;
+  const label = $('#camMicLabel');
+  if (label) label.textContent = state.camMicActive ? 'Mic: Listening' : 'Mic: Muted';
+  $('#btnCamToggleMic')?.classList.toggle('danger', !state.camMicActive);
+  toast(state.camMicActive ? 'Camera microphone unmuted' : 'Camera microphone muted');
+});
+
+$('#wakeWordToggle')?.addEventListener('click', () => {
+  state.wakeWordEnabled = !state.wakeWordEnabled;
+  LS.set('jarvis_wake_word', state.wakeWordEnabled ? '1' : '0');
+  refreshUI();
+  if (state.wakeWordEnabled) {
+    toast('Background wake-word armed: Listening for "Wake up JARVIS".');
+    startBackgroundVoiceListener();
+  } else {
+    toast('Background wake-word disarmed.');
+    if (!state.handsFree && !state.camActive) {
+      stopVoiceListener();
+    }
+  }
+});
+
 $('#locationBtn').addEventListener('click', () => {
   if (!navigator.geolocation) return toast('This browser has no location support.', true);
   toast('Asking for location permission...');
@@ -1129,11 +1533,15 @@ $('#locationBtn').addEventListener('click', () => {
 $('#searchBtn').addEventListener('click', () => { $('#searchModal').classList.remove('hidden'); $('#searchInput').focus(); });
 $('#searchForm').addEventListener('submit', (e) => { e.preventDefault(); const q = $('#searchInput').value.trim(); if (!q) return; closeModals(); sendChat(`Search the web for ${q} and tell me the answer briefly`); $('#searchInput').value = ''; });
 $('#searchGoogle').addEventListener('click', () => { const q = $('#searchInput').value.trim(); if (!q) return toast('Type something to search for.', true); closeModals(); runTool('open_url', { url: 'https://www.google.com/search?q=' + encodeURIComponent(q) }, 'Google'); $('#searchInput').value = ''; });
-function closeModals() { $$('.modal').forEach((m) => m.classList.add('hidden')); cameraStop(); }
+function closeModals() {
+  $$('.modal').forEach((m) => m.classList.add('hidden'));
+  dismissWakeOverlay();
+  closeLiveCamVision();
+}
 $$('[data-close]').forEach((b) => b.addEventListener('click', closeModals));
 $$('.modal').forEach((m) => m.addEventListener('mousedown', (e) => { if (e.target === m) closeModals(); }));
 
-/* ------------------------------------------------------------------ voice out */
+/* ------------------------------------------------------------------ voice out (natural speech) */
 const LANGS = [['en-US', 'English'], ['ar-IQ', 'Arabic (Iraq)'], ['ar-SA', 'Arabic'], ['ckb-IQ', 'Kurdish (Sorani)'], ['tr-TR', 'Turkish'], ['fa-IR', 'Persian']];
 function syncLangSelect() {
   const sel = $('#langSelect');
@@ -1145,18 +1553,40 @@ function pickVoice(lang) {
   const pick = (l) => voices.find((v) => v.lang === l) || voices.find((v) => v.lang.toLowerCase().startsWith(l.split('-')[0].toLowerCase()));
   return pick(lang) || (base === 'ckb' ? pick('ar-SA') : null) || null;
 }
-function stopSpeaking() { if (window.speechSynthesis) speechSynthesis.cancel(); state.speaking = false; refreshUI(); }
+function stopSpeaking() {
+  if (window.speechSynthesis) speechSynthesis.cancel();
+  state.speaking = false;
+  refreshUI();
+  if ((state.wakeWordEnabled || state.handsFree || state.camActive) && !state.rec && !state.busy) {
+    setTimeout(startBackgroundVoiceListener, 250);
+  }
+}
 function speak(text) {
   return new Promise((resolve) => {
     if (!state.speakReplies || !window.speechSynthesis || !text) return resolve();
     speechSynthesis.cancel();
-    const parts = (text.match(/[^.!?؟۔\n]+[.!?؟۔]*/g) || [text]).map((p) => p.trim()).filter(Boolean);
+    const cleanText = text.replace(/[*_#`~>\[\]\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
+    const parts = (cleanText.match(/[^.!?؟۔\n]+[.!?؟۔]*/g) || [cleanText]).map((p) => p.trim()).filter(Boolean);
     const voice = pickVoice(state.voiceLang || 'en-US');
-    state.speaking = true; refreshUI();
-    const done = () => { state.speaking = false; refreshUI(); resolve(); };
+    state.speaking = true;
+    refreshUI();
+    const done = () => {
+      state.speaking = false;
+      refreshUI();
+      resolve();
+      if ((state.wakeWordEnabled || state.handsFree || state.camActive) && !state.rec && !state.busy) {
+        setTimeout(startBackgroundVoiceListener, 300);
+      }
+    };
     parts.forEach((p, i) => {
-      const u = new SpeechSynthesisUtterance(p); u.lang = voice?.lang || state.voiceLang || 'en-US'; if (voice) u.voice = voice; u.rate = 1.05;
-      if (i === parts.length - 1) { u.onend = done; u.onerror = done; }
+      const u = new SpeechSynthesisUtterance(p);
+      u.lang = voice?.lang || state.voiceLang || 'en-US';
+      if (voice) u.voice = voice;
+      u.rate = 1.05;
+      if (i === parts.length - 1) {
+        u.onend = done;
+        u.onerror = done;
+      }
       speechSynthesis.speak(u);
     });
   });
@@ -1170,25 +1600,126 @@ $('#testVoice').addEventListener('click', () => {
   speak('Hello Sir. I can talk to you, and I am ready.').then(() => { state.speakReplies = was; });
 });
 
-/* ------------------------------------------------------------------ voice in (hands-free conversation) */
+/* ------------------------------------------------------------------ continuous background voice listener */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-function listenOnce() {
-  if (!SR) { toast('Voice input needs Chrome or Edge. You can still type.', true); state.handsFree = false; refreshUI(); return; }
-  if (state.rec || state.busy || state.speaking) return;
-  const rec = new SR(); rec.lang = state.voiceLang || 'en-US'; rec.interimResults = false; let heard = false;
-  rec.onstart = () => { state.rec = rec; refreshUI(); };
-  rec.onresult = (e) => { heard = true; const text = e.results[0][0].transcript.trim(); if (text) sendChat(text); };
-  rec.onerror = (e) => {
-    if (e.error === 'not-allowed' || e.error === 'service-not-allowed') { toast('The microphone is blocked. Click the lock icon in the address bar and allow it.', true); state.handsFree = false; }
-    else if (e.error === 'language-not-supported') { toast('This browser cannot recognise that language. Pick another one.', true); state.handsFree = false; }
-  };
-  rec.onend = () => { state.rec = null; refreshUI(); if (state.handsFree && !heard && !state.busy && !state.speaking) setTimeout(listenOnce, 400); };
-  try { rec.start(); } catch { state.rec = null; }
+let voiceRestartTimer = null;
+let voiceShouldBeRunning = false;
+
+function startBackgroundVoiceListener() {
+  if (!SR) return;
+  voiceShouldBeRunning = true;
+  if (state.rec || state.speaking) return;
+
+  clearTimeout(voiceRestartTimer);
+  try {
+    const rec = new SR();
+    rec.lang = state.voiceLang || 'en-US';
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.maxAlternatives = 1;
+
+    rec.onstart = () => {
+      state.rec = rec;
+      refreshUI();
+    };
+
+    rec.onresult = (e) => {
+      const results = e.results;
+      if (!results || !results.length) return;
+      const last = results[results.length - 1];
+      if (!last || !last[0]) return;
+      const text = (last[0].transcript || '').trim();
+      if (!text) return;
+
+      playBlipSound();
+
+      // If JARVIS is in sleep mode: ONLY wake phrases can wake him
+      if (state.isSleeping) {
+        if (isWakePhrase(text)) {
+          triggerWakeUpSequence(true);
+        }
+        return;
+      }
+
+      // Awake: handle sleep, wake, camera, or normal command
+      if (isSleepPhrase(text)) {
+        triggerSleepMode();
+        return;
+      }
+      if (isWakePhrase(text)) {
+        triggerWakeUpSequence(true);
+        return;
+      }
+      if (isCamPhrase(text)) {
+        openLiveCamVision();
+        return;
+      }
+
+      if (state.camActive) {
+        if (state.camMicActive) {
+          sendCamQuery(text);
+        }
+        return;
+      }
+
+      sendChat(text);
+    };
+
+    rec.onerror = (e) => {
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+        voiceShouldBeRunning = false;
+        state.handsFree = false;
+      }
+    };
+
+    rec.onend = () => {
+      state.rec = null;
+      refreshUI();
+      if (voiceShouldBeRunning && (state.wakeWordEnabled || state.handsFree || state.camActive) && !state.speaking && !state.busy) {
+        clearTimeout(voiceRestartTimer);
+        voiceRestartTimer = setTimeout(() => {
+          if (voiceShouldBeRunning && !state.rec && !state.speaking) {
+            startBackgroundVoiceListener();
+          }
+        }, 350);
+      }
+    };
+
+    rec.start();
+  } catch {
+    state.rec = null;
+  }
 }
+
+function stopVoiceListener() {
+  voiceShouldBeRunning = false;
+  clearTimeout(voiceRestartTimer);
+  if (state.rec) {
+    try { state.rec.abort(); } catch {}
+    state.rec = null;
+  }
+  refreshUI();
+}
+
 $('#voiceBtn').addEventListener('click', () => {
+  if (state.isSleeping) {
+    triggerWakeUpSequence(true);
+    return;
+  }
   state.handsFree = !state.handsFree;
-  if (state.handsFree) { state.speakReplies = true; LS.set('jarvis_speak', '1'); syncSpeakBtn(); listenOnce(); }
-  else { state.rec?.abort(); stopSpeaking(); }
+  if (state.handsFree) {
+    state.speakReplies = true;
+    LS.set('jarvis_speak', '1');
+    syncSpeakBtn();
+    startBackgroundVoiceListener();
+    toast('Hands-free mode active. Just speak whenever you like.');
+  } else {
+    stopSpeaking();
+    if (!state.wakeWordEnabled && !state.camActive) {
+      stopVoiceListener();
+    }
+    toast('Hands-free stopped. Background wake-word remains active.');
+  }
   refreshUI();
 });
 
@@ -1204,3 +1735,10 @@ document.addEventListener('keydown', (e) => {
 });
 function greet() { addMsg('bot', 'Good day, Sir. Tell me what to do, for example: "open Spotify", "volume up" or "play lofi on YouTube".'); }
 syncLangSelect(); syncSpeakBtn(); refreshUI(); greet();
+if (state.wakeWordEnabled) {
+  window.addEventListener('click', () => {
+    if (state.wakeWordEnabled && !state.rec && !state.busy) {
+      startBackgroundVoiceListener();
+    }
+  }, { once: true });
+}

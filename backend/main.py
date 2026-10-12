@@ -80,6 +80,7 @@ async def local_network_guard(request: Request, call_next):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=8000)
     session_id: str = Field(default="default", min_length=1, max_length=120)
+    image: str | None = None
 
 
 class ApproveRequest(BaseModel):
@@ -169,7 +170,7 @@ async def chat_stream(payload: ChatRequest) -> StreamingResponse:
     """Newline-delimited JSON events: status / tool / tool_result / final / error."""
     async def gen():
         try:
-            async for ev in stream_jarvis(payload.message, payload.session_id):
+            async for ev in stream_jarvis(payload.message, payload.session_id, image=payload.image):
                 yield json.dumps(ev, ensure_ascii=False) + "\n"
         except Exception as exc:  # noqa: BLE001
             yield json.dumps({"type": "error", "text": str(exc)}, ensure_ascii=False) + "\n"

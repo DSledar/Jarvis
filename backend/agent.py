@@ -51,7 +51,8 @@ CAPABILITIES & KNOWLEDGE:
 - Remote Access Outside Wi-Fi: Start secure remote HTTPS tunnel with `start_remote_tunnel` and inspect remote URL with `get_remote_url`.
 - Multi-Task Handling: When the user gives you multiple tasks, execute each tool step sequentially and summarize the outcome.
 - PC Control: `open_app`, `youtube_play`, `media_control`, `press_key`, `type_text`, `lock_pc`, `show_desktop`.
-- Web Intelligence: Use `web_search` for current information, news, or weather.
+- Live Camera Vision: When the user asks about what is on camera or says 'Look at this' or 'What do you see?', analyze the camera visual frame with laser precision, noting objects, persons, colors, texts, and surroundings.
+- Background Wake & Sleep Modes: When the user says 'Wake up JARVIS', greet them warmly with system readiness. When they say 'Goodbye JARVIS' or 'Go to sleep', confirm entering sleep mode politely.
 - Memory & Continuous Learning: Remember lasting details with `remember`. You continuously recall past discussions and adapt to user habits.
 
 COMMUNICATION STYLE:
@@ -87,18 +88,70 @@ def _parse_args(raw: Any) -> dict:
         return {}
 
 
+def _inspect_image_quick(image_b64: str) -> str:
+    """Inspects camera frame with OpenCV for real-time visual properties."""
+    if not image_b64:
+        return ""
+    try:
+        import base64
+        import cv2
+        import numpy as np
+        raw = image_b64
+        if "," in raw:
+            raw = raw.split(",", 1)[1]
+        buf = base64.b64decode(raw)
+        nparr = np.frombuffer(buf, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        if img is None:
+            return ""
+        h, w, _ = img.shape
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        brightness = float(np.mean(gray))
+        light_desc = "well lit" if brightness > 110 else "dimly lit" if brightness > 50 else "dark"
+        faces_count = 0
+        cascade_path = getattr(cv2, "data", None) and cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
+        if cascade_path and os.path.exists(cascade_path):
+            cascade = cv2.CascadeClassifier(cascade_path)
+            faces = cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=4, minSize=(30, 30))
+            faces_count = len(faces)
+        details = [f"Webcam Frame: {w}x{h}", f"Lighting: {light_desc}"]
+        if faces_count > 0:
+            details.append(f"{faces_count} person/face(s) detected in front of camera")
+        return f"[Live Camera Feed: {', '.join(details)}]"
+    except Exception:
+        return ""
+
+
 def _to_ollama(msgs: list[dict]) -> list[dict]:
     out = []
     for m in msgs:
+        content = m.get("content")
+        images = []
+        if isinstance(content, list):
+            text_part = ""
+            for item in content:
+                if item.get("type") == "text":
+                    text_part += item.get("text", "")
+                elif item.get("type") == "image_url":
+                    raw_url = item.get("image_url", {}).get("url", "")
+                    if "," in raw_url:
+                        raw_url = raw_url.split(",", 1)[1]
+                    if raw_url:
+                        images.append(raw_url)
+            content = text_part
+
         if m["role"] == "assistant" and m.get("tool_calls"):
-            out.append({"role": "assistant", "content": m.get("content") or "",
+            out.append({"role": "assistant", "content": content or "",
                         "tool_calls": [{"function": {"name": c["function"]["name"],
                                                      "arguments": _parse_args(c["function"].get("arguments"))}}
                                        for c in m["tool_calls"]]})
         elif m["role"] == "tool":
-            out.append({"role": "tool", "content": m["content"], "tool_name": m.get("name", "")})
+            out.append({"role": "tool", "content": content, "tool_name": m.get("name", "")})
         else:
-            out.append({"role": m["role"], "content": m["content"]})
+            entry = {"role": m["role"], "content": content}
+            if images:
+                entry["images"] = images
+            out.append(entry)
     return out
 
 
@@ -136,6 +189,14 @@ async def _call(brain: dict, messages: list[dict], use_tools: bool, max_tokens: 
                 if use_tools:
                     payload["tools"] = tools.schemas()
                 r = await client.post(f"{base}/api/chat", json=payload)
+                if r.status_code == 400 and any(w in r.text.lower() for w in ("image", "vision", "multimodal", "media")):
+                    # Strip raw images if Ollama model is text-only (OpenCV telemetry is still preserved in system prompt)
+                    for m in payload["messages"]:
+                        m.pop("images", None)
+                    r = await client.post(f"{base}/api/chat", json=payload)
+                if r.status_code == 400 and use_tools and "tool" in r.text.lower():
+                    payload.pop("tools", None)
+                    r = await client.post(f"{base}/api/chat", json=payload)
             else:
                 payload = {"model": brain["model"], "messages": messages, "temperature": 0.3, "stream": False}
                 if max_tokens:
@@ -144,6 +205,18 @@ async def _call(brain: dict, messages: list[dict], use_tools: bool, max_tokens: 
                     payload["tools"] = tools.schemas()
                 headers = {"Authorization": f"Bearer {brain['api_key']}"} if brain.get("api_key") else {}
                 r = await client.post(f"{base}/chat/completions", json=payload, headers=headers)
+                if r.status_code == 400 and any(w in r.text.lower() for w in ("image", "vision", "multimodal", "media")):
+                    # Strip images if target cloud model is text-only
+                    clean_msgs = []
+                    for m in messages:
+                        c = m.get("content")
+                        if isinstance(c, list):
+                            txt = "".join(x.get("text", "") for x in c if x.get("type") == "text")
+                            clean_msgs.append({**m, "content": txt})
+                        else:
+                            clean_msgs.append(m)
+                    payload["messages"] = clean_msgs
+                    r = await client.post(f"{base}/chat/completions", json=payload, headers=headers)
                 if r.status_code == 400 and use_tools and "tool" in r.text.lower():  # model without tool support: chat only
                     payload.pop("tools", None)
                     r = await client.post(f"{base}/chat/completions", json=payload, headers=headers)
@@ -204,22 +277,23 @@ def _text_tool_calls(content: str) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- main entry (streams progress events)
-async def stream_jarvis(message: str, session_id: str) -> AsyncIterator[dict]:
-    # 1) Instant direct commands (no AI needed)
-    plan = commands.try_plan(message)
-    if plan:
-        results: list[str] = []
-        used: list[str] = []
-        for name, args in plan.steps:
-            used.append(name)
-            yield {"type": "tool", "name": name, "args": args}
-            res = await asyncio.to_thread(tools.run_tool, name, args)
-            results.append(res)
-            yield {"type": "tool_result", "name": name, "result": res[:300], "ok": not tools.failed(res)}
-        final = plan.say(results)
-        memory.save_turn(session_id, message, final)
-        yield {"type": "final", "text": final, "agent": "JARVIS", "tools_used": used, "pending": tools.pending_list(), "direct": True}
-        return
+async def stream_jarvis(message: str, session_id: str, image: str | None = None) -> AsyncIterator[dict]:
+    # 1) Instant direct commands (no AI needed if no image query)
+    if not image:
+        plan = commands.try_plan(message)
+        if plan:
+            results: list[str] = []
+            used: list[str] = []
+            for name, args in plan.steps:
+                used.append(name)
+                yield {"type": "tool", "name": name, "args": args}
+                res = await asyncio.to_thread(tools.run_tool, name, args)
+                results.append(res)
+                yield {"type": "tool_result", "name": name, "result": res[:300], "ok": not tools.failed(res)}
+            final = plan.say(results)
+            memory.save_turn(session_id, message, final)
+            yield {"type": "final", "text": final, "agent": "JARVIS", "tools_used": used, "pending": tools.pending_list(), "direct": True}
+            return
 
     # 2) AI brain with tools
     is_coding = _is_coding_request(message)
@@ -228,6 +302,11 @@ async def stream_jarvis(message: str, session_id: str) -> AsyncIterator[dict]:
     facts = memory.list_facts()
     facts_txt = ("\nTHINGS YOU KNOW ABOUT THE USER:\n- " + "\n- ".join(facts)) if facts else ""
     system = PERSONA.format(os=platform.system(), today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M"), facts=facts_txt)
+
+    if image:
+        vis_feed = _inspect_image_quick(image)
+        if vis_feed:
+            system += f"\n\n{vis_feed}\nThe user is currently interacting with you with their Live Camera open."
 
     # Dynamic memory recall from past interactions and knowledge base
     recalled = memory.recall_relevant_context(message)
@@ -249,8 +328,13 @@ async def stream_jarvis(message: str, session_id: str) -> AsyncIterator[dict]:
             "Do NOT output partial snippets with placeholders. If helpful, use write_code_file to save the script directly."
         )
 
+    user_content: Any = [
+        {"type": "text", "text": message},
+        {"type": "image_url", "image_url": {"url": image}}
+    ] if image else message
+
     msgs: list[dict] = [{"role": "system", "content": system}, *memory.load_history(session_id),
-                        {"role": "user", "content": message}]
+                        {"role": "user", "content": user_content}]
     used = []
     final = ""
     yield {"type": "status", "text": "Analyzing & Coding..." if is_coding else "Thinking..."}

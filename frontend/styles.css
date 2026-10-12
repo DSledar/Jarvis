@@ -292,3 +292,146 @@ body.focus .rail { opacity: .55; }
 .tunnel-status-badge.active { background: rgba(83,242,161,0.15); border: 1px solid var(--green); color: var(--green); }
 .tunnel-status-badge.stopped { background: rgba(255,107,87,0.15); border: 1px solid var(--red); color: var(--red); }
 
+/* ---------- Wake Up Cinematic Video Overlay ---------- */
+.wake-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(2, 8, 12, 0.96);
+  backdrop-filter: blur(14px);
+  animation: wakeFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.wake-backdrop {
+  position: absolute; inset: 0;
+  background: radial-gradient(circle at center, rgba(63, 230, 255, 0.16) 0%, transparent 75%);
+  pointer-events: none;
+}
+.wake-modal {
+  position: relative; width: min(940px, 95vw); max-height: 94vh;
+  background: linear-gradient(180deg, #071e28, #030d13);
+  border: 1px solid var(--cyan);
+  box-shadow: 0 0 60px rgba(63, 230, 255, 0.35), inset 0 0 25px rgba(63, 230, 255, 0.12);
+  border-radius: 6px; overflow: hidden; display: flex; flex-direction: column;
+}
+.wake-scanlines {
+  position: absolute; inset: 0; pointer-events: none; opacity: 0.16;
+  background: repeating-linear-gradient(0deg, rgba(63, 230, 255, 0.2) 0px, rgba(63, 230, 255, 0.2) 1px, transparent 2px, transparent 4px);
+}
+.wake-header {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 20px; border-bottom: 1px solid var(--line);
+  background: rgba(4, 15, 22, 0.9);
+}
+.wake-brand { display: flex; align-items: center; gap: 14px; }
+.wake-brand b { font-size: 17px; letter-spacing: 0.18em; color: #fff; }
+.wake-brand small { display: block; font-size: 11.5px; color: var(--cyan); font-family: var(--mono); }
+.wake-arc-reactor {
+  width: 32px; height: 32px; border-radius: 50%;
+  border: 2px solid var(--cyan); box-shadow: 0 0 16px var(--cyan);
+  background: radial-gradient(circle, #fff, var(--cyan) 55%, transparent 75%);
+  animation: pulse 1.2s infinite;
+}
+.wake-video-frame {
+  position: relative; width: 100%; aspect-ratio: 16 / 9; background: #000; overflow: hidden;
+}
+.wake-video-frame iframe {
+  width: 100%; height: 100%; border: none;
+}
+.wake-footer {
+  padding: 14px 22px; background: rgba(3, 13, 19, 0.95);
+  display: flex; justify-content: space-between; align-items: center; gap: 14px;
+  border-top: 1px solid var(--line-soft); flex-wrap: wrap;
+}
+.wake-status-line {
+  display: flex; align-items: center; gap: 10px; font-size: 14.5px; color: var(--cyan);
+  font-family: var(--mono);
+}
+.wake-dot {
+  width: 9px; height: 9px; border-radius: 50%; background: var(--green);
+  box-shadow: 0 0 10px var(--green); animation: pulse 1s infinite;
+}
+@keyframes wakeFadeIn { from { opacity: 0; transform: scale(0.97); } to { opacity: 1; transform: scale(1); } }
+
+/* ---------- Live Cam Vision HUD ---------- */
+.live-cam-card { width: min(1080px, 96vw) !important; max-height: 92vh; display: flex; flex-direction: column; }
+.live-cam-container {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(320px, 1fr); gap: 16px;
+  margin-top: 12px; min-height: 440px;
+}
+@media (max-width: 860px) {
+  .live-cam-container { grid-template-columns: 1fr; }
+}
+.live-cam-viewport {
+  position: relative; width: 100%; height: 100%; min-height: 380px;
+  background: #000; border: 1px solid var(--line); border-radius: 4px; overflow: hidden;
+  display: flex; align-items: center; justify-content: center;
+}
+.live-cam-viewport video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.hud-reticle {
+  position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 35px rgba(63, 230, 255, 0.2);
+}
+.hud-corners { position: absolute; width: 26px; height: 26px; border: 2px solid var(--cyan); }
+.hud-corners.top-left { top: 12px; left: 12px; border-right: 0; border-bottom: 0; }
+.hud-corners.top-right { top: 12px; right: 12px; border-left: 0; border-bottom: 0; }
+.hud-corners.bottom-left { bottom: 12px; left: 12px; border-right: 0; border-top: 0; }
+.hud-corners.bottom-right { bottom: 12px; right: 12px; border-left: 0; border-top: 0; }
+.hud-crosshair {
+  position: absolute; top: 50%; left: 50%; width: 44px; height: 44px;
+  margin: -22px 0 0 -22px; border: 1px dashed rgba(63, 230, 255, 0.45); border-radius: 50%;
+}
+.hud-crosshair::before, .hud-crosshair::after {
+  content: ""; position: absolute; background: var(--cyan);
+}
+.hud-crosshair::before { top: 21px; left: -8px; width: 60px; height: 1px; }
+.hud-crosshair::after { top: -8px; left: 21px; width: 1px; height: 60px; }
+.hud-info-badge {
+  position: absolute; bottom: 12px; left: 12px; font-family: var(--mono);
+  font-size: 11px; color: var(--cyan); background: rgba(3, 14, 20, 0.85);
+  padding: 3px 8px; border: 1px solid var(--cyan-dim); border-radius: 2px;
+}
+.live-cam-sidebar {
+  display: flex; flex-direction: column; gap: 10px; min-height: 0;
+}
+.cam-transcript-log {
+  flex: 1; min-height: 220px; max-height: 290px; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 8px; padding: 10px;
+  background: #030d13; border: 1px solid var(--line-soft); border-radius: 4px;
+}
+.cam-bubble {
+  padding: 10px 14px; border-radius: 4px; font-size: 14px; line-height: 1.45;
+  word-break: break-word;
+}
+.cam-bubble.user { align-self: flex-end; background: #0b3342; border: 1px solid var(--cyan-dim); color: #fff; }
+.cam-bubble.bot { align-self: flex-start; background: #061922; border-left: 3px solid var(--cyan); color: var(--text); }
+.cam-input-bar { display: flex; gap: 8px; margin-top: auto; }
+.cam-input-bar input { flex: 1; padding: 10px 12px; }
+
+/* ---------- Sleep Mode State ---------- */
+body.jarvis-sleeping .rail, body.jarvis-sleeping .top {
+  opacity: 0.6; transition: opacity 0.4s;
+}
+body.jarvis-sleeping .orb[data-state=sleep] .core-in {
+  fill: #1d4060 !important; opacity: 0.4 !important;
+  animation: sleepPulse 5s ease-in-out infinite !important;
+  filter: drop-shadow(0 0 10px #18334d) !important;
+}
+body.jarvis-sleeping .orb[data-state=sleep] .r {
+  stroke: #18334d !important; opacity: 0.3 !important;
+}
+body.jarvis-sleeping .orb[data-state=sleep] .ticks line {
+  stroke: #18334d !important; opacity: 0.3 !important;
+}
+@keyframes sleepPulse {
+  0%, 100% { transform: scale(0.85); opacity: 0.3; }
+  50% { transform: scale(1.04); opacity: 0.55; }
+}
+.sleep-badge-banner {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 16px;
+  background: rgba(45, 80, 120, 0.25); border: 1px solid #2d5078;
+  color: #a7c8ed; font-size: 13.5px; font-family: var(--mono);
+}
+
+
