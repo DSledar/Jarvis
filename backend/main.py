@@ -12,7 +12,7 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 # Load .env BEFORE importing agent.py (it reads a few settings at import time).
@@ -64,6 +64,10 @@ async def local_network_guard(request: Request, call_next):
     # Always allow phone portal and static assets across local network or remote tunnel
     if path.startswith(("/phone", "/api/phone", "/favicon.ico", "/assets", "/styles.css", "/app.js", "/api/remote", "/api/history")):
         return await call_next(request)
+
+    # If remote visitor hits root "/" without path, automatically redirect to "/phone"
+    if path in ("/", "") and not _is_private_or_local(host, client_ip):
+        return RedirectResponse(url="/phone")
 
     # Check for valid phone token in headers or query params
     token = request.headers.get("x-phone-token") or request.query_params.get("token")
@@ -713,6 +717,11 @@ async def phone_capture_request_api() -> dict:
 
 
 # ----------------------------------------------------------------------------- remote tunnel API
+@app.get("/api/phone/ping")
+async def phone_ping_api() -> dict:
+    return {"status": "ok", "service": "jarvis"}
+
+
 @app.get("/api/remote/status")
 async def remote_status_api() -> dict:
     return remote.get_tunnel_status()
@@ -720,7 +729,7 @@ async def remote_status_api() -> dict:
 
 @app.post("/api/remote/start")
 async def remote_start_api(payload: dict) -> dict:
-    prov = str(payload.get("provider", "pinggy"))
+    prov = str(payload.get("provider", "serveo"))
     return await asyncio.to_thread(remote.start_tunnel, prov)
 
 

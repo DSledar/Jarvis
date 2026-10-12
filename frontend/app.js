@@ -249,7 +249,14 @@ function isCamPhrase(raw) {
 }
 
 /* ------------------------------------------------------------------ Wake / Sleep sequence handlers */
-function triggerWakeUpSequence(playVideo = true) {
+let introTimer = null;
+let introProgressInterval = null;
+
+function triggerWakeUpSequence(opts = true) {
+  const options = (typeof opts === 'boolean') ? { playVideo: opts, isStartup: false } : (opts || {});
+  const playVideo = options.playVideo !== false;
+  const isStartup = Boolean(options.isStartup);
+
   state.isSleeping = false;
   state.handsFree = true;
   LS.set('jarvis_speak', '1');
@@ -259,30 +266,127 @@ function triggerWakeUpSequence(playVideo = true) {
   playWakeChime();
 
   const overlay = $('#wakeUpOverlay');
+  const localVideo = $('#wakeLocalVideo');
+  const iframeWrapper = $('#wakeIframeWrapper');
   const iframe = $('#wakeVideoFrame');
   const status = $('#wakeStatusText');
   const subtitle = $('#wakeSubtitle');
+  const progressBar = $('#introProgressBar');
+  const progressLabel = $('#introProgressLabel');
+
+  if (introTimer) { clearTimeout(introTimer); introTimer = null; }
+  if (introProgressInterval) { clearInterval(introProgressInterval); introProgressInterval = null; }
 
   if (overlay) {
+    overlay.style.opacity = '1';
     overlay.classList.remove('hidden');
-    if (subtitle) subtitle.textContent = 'BOOT SEQUENCE INITIALIZED // AUDIO SENSORS ARMED';
-    if (status) status.textContent = '"Welcome back, Sir. All systems initialized and online."';
-    if (playVideo && iframe) {
-      iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
+
+    if (subtitle) {
+      subtitle.textContent = isStartup
+        ? 'BOOT SEQUENCE // NEURAL CORES ONLINE'
+        : 'WAKE SEQUENCE // AUDIO SENSORS ARMED';
+    }
+    if (status) {
+      status.textContent = '"Welcome back, Sir. All systems initialized and online."';
+    }
+
+    // Play native 1080p local intro video (zero YouTube branding)
+    if (playVideo) {
+      if (localVideo) {
+        localVideo.style.display = 'block';
+        if (iframeWrapper) iframeWrapper.classList.add('hidden');
+        localVideo.currentTime = 0;
+        localVideo.muted = true; // start muted for 100% browser autoplay compliance
+
+        const playPromise = localVideo.play();
+        if (playPromise !== undefined) {
+          playPromise
+            .then(() => {
+              // Try unmuting once playback starts
+              try { localVideo.muted = false; } catch {}
+            })
+            .catch(() => {
+              // Local video playback failed, fallback to scaled YouTube iframe
+              if (iframeWrapper && iframe) {
+                localVideo.style.display = 'none';
+                iframeWrapper.classList.remove('hidden');
+                iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
+              }
+            });
+        }
+      }
+    }
+
+    // Stark HUD Progress Bar animation
+    if (progressBar && progressLabel) {
+      let progress = 0;
+      progressBar.style.width = '0%';
+      progressLabel.textContent = 'BOOT SEQUENCE: 0% INITIALIZING';
+
+      const steps = [
+        { pct: 20, text: '20% - NEURAL NETWORKS SYNCHRONIZED' },
+        { pct: 45, text: '45% - QUANTUM SENSORS CALIBRATED' },
+        { pct: 75, text: '75% - PERIPHERALS & ADAPTERS ARMED' },
+        { pct: 90, text: '90% - SECURITY PROTOCOLS VERIFIED' },
+        { pct: 100, text: '100% - J.A.R.V.I.S. MARK IV OPERATIONAL' },
+      ];
+
+      introProgressInterval = setInterval(() => {
+        progress += 4;
+        if (progress > 100) progress = 100;
+        progressBar.style.width = progress + '%';
+
+        const matchedStep = [...steps].reverse().find((s) => progress >= s.pct);
+        if (matchedStep) {
+          progressLabel.textContent = `BOOT SEQUENCE: ${matchedStep.text}`;
+        }
+
+        if (progress >= 100) {
+          clearInterval(introProgressInterval);
+          introProgressInterval = null;
+        }
+      }, 110);
+    }
+
+    // Auto-enter Command Center on initial startup after 5.5 seconds
+    if (isStartup) {
+      introTimer = setTimeout(() => {
+        dismissWakeOverlay();
+      }, 5500);
     }
   }
 
-  logActivity('JARVIS systems online (Wake-up sequence initiated)', true);
+  logActivity('JARVIS systems online (' + (isStartup ? 'Startup intro' : 'Wake-up sequence') + ' initiated)', true);
   toast('Welcome back, Sir. JARVIS is awake!');
   speak('Welcome back, Sir. All systems are initialized and online.');
   startBackgroundVoiceListener();
 }
 
 function dismissWakeOverlay() {
+  if (introTimer) { clearTimeout(introTimer); introTimer = null; }
+  if (introProgressInterval) { clearInterval(introProgressInterval); introProgressInterval = null; }
+
   const overlay = $('#wakeUpOverlay');
+  const localVideo = $('#wakeLocalVideo');
+  const iframeWrapper = $('#wakeIframeWrapper');
   const iframe = $('#wakeVideoFrame');
+
+  if (localVideo) {
+    try { localVideo.pause(); } catch {}
+  }
   if (iframe) iframe.src = '';
-  if (overlay) overlay.classList.add('hidden');
+  if (iframeWrapper) iframeWrapper.classList.add('hidden');
+
+  if (overlay && !overlay.classList.contains('hidden')) {
+    overlay.style.transition = 'opacity 0.4s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => {
+      overlay.classList.add('hidden');
+      overlay.style.opacity = '1';
+      overlay.style.transition = '';
+    }, 400);
+  }
+  $('#chatInput')?.focus();
 }
 
 function triggerSleepMode() {
@@ -1229,7 +1333,7 @@ $('#btnHistorySearch')?.addEventListener('click', async () => {
 });
 
 /* ------------------------------------------------------------------ Remote Tunnel & WoL */
-let tunnelState = { active: false, url: '' };
+let tunnelState = { active: false, url: '', provider: 'serveo' };
 
 async function refreshTunnelStatus() {
   try {
@@ -1239,14 +1343,19 @@ async function refreshTunnelStatus() {
     const badge = $('#remoteTunnelBadge');
     const link = $('#remoteTunnelLink');
     const btn = $('#btnToggleTunnel');
+    const sel = $('#tunnelProviderSelect');
+
     if (badge) {
       badge.className = 'tunnel-status-badge ' + (data.active ? 'active' : 'stopped');
-      badge.textContent = data.active ? '● Online (HTTPS)' : '● Offline';
+      badge.textContent = data.active
+        ? `● Online (HTTPS) [${data.provider || 'serveo'}]`
+        : '● Offline';
     }
     if (link) {
       if (data.active && data.url) {
-        link.href = data.url + '/phone';
-        link.textContent = data.url + '/phone';
+        const fullUrl = data.url.replace(/\/+$/, '') + '/phone';
+        link.href = fullUrl;
+        link.textContent = fullUrl;
       } else {
         link.href = '#';
         link.textContent = 'Tunnel not started';
@@ -1254,28 +1363,54 @@ async function refreshTunnelStatus() {
     }
     if (btn) {
       btn.textContent = data.active ? 'Stop Remote Tunnel' : 'Start Remote Tunnel';
+      btn.classList.toggle('danger', Boolean(data.active));
+    }
+    if (sel && data.provider && !sel.matches(':focus')) {
+      sel.value = data.provider;
     }
   } catch (err) {}
 }
 
 async function toggleRemoteTunnel() {
   const btn = $('#btnToggleTunnel');
-  btn.disabled = true;
+  const sel = $('#tunnelProviderSelect');
+  const badge = $('#remoteTunnelBadge');
+  const link = $('#remoteTunnelLink');
+
+  if (btn) btn.disabled = true;
+
   try {
     if (tunnelState.active) {
+      if (btn) btn.textContent = 'Stopping tunnel...';
       toast('Stopping remote tunnel...');
       await api('/api/remote/stop', {});
+      tunnelState.active = false;
+      tunnelState.url = '';
+
+      if (badge) {
+        badge.className = 'tunnel-status-badge stopped';
+        badge.textContent = '● Offline';
+      }
+      if (link) {
+        link.href = '#';
+        link.textContent = 'Tunnel not started';
+      }
+      if (btn) {
+        btn.textContent = 'Start Remote Tunnel';
+        btn.classList.remove('danger');
+      }
       toast('Remote tunnel stopped.');
       await refreshTunnelStatus();
     } else {
-      toast('Starting secure reverse SSH tunnel (localhost.run)...');
-      btn.textContent = 'Connecting...';
-      const d = await api('/api/remote/start', { provider: 'localhost_run' });
+      const prov = (sel ? sel.value : '') || 'serveo';
+      if (btn) btn.textContent = `Connecting (${prov})...`;
+      toast(`Starting secure reverse tunnel via ${prov}...`);
+      const d = await api('/api/remote/start', { provider: prov });
 
       // Actively poll until public URL is captured
       let gotUrl = Boolean(d.active && d.url);
       for (let i = 0; i < 15 && !gotUrl; i++) {
-        await new Promise((r) => setTimeout(r, 1000));
+        await new Promise((r) => setTimeout(r, 800));
         await refreshTunnelStatus();
         if (tunnelState.active && tunnelState.url) {
           gotUrl = true;
@@ -1286,18 +1421,25 @@ async function toggleRemoteTunnel() {
       if (gotUrl) {
         toast('Remote tunnel active! Open URL on your phone.');
       } else {
-        toast(tunnelState.last_error ? `Tunnel notice: ${tunnelState.last_error}` : 'Tunnel started. Refreshing URL...', false);
+        toast(tunnelState.last_error ? `Tunnel notice: ${tunnelState.last_error}` : 'Tunnel starting in background...', false);
       }
     }
   } catch (err) {
     toast('Tunnel error: ' + err.message, true);
   } finally {
-    btn.disabled = false;
+    if (btn) btn.disabled = false;
     await refreshTunnelStatus();
   }
 }
 
 $('#btnToggleTunnel')?.addEventListener('click', toggleRemoteTunnel);
+$('#tunnelProviderSelect')?.addEventListener('change', async (e) => {
+  if (tunnelState.active) {
+    toast('Switching tunnel provider to ' + e.target.value + '...');
+    await toggleRemoteTunnel();
+    await toggleRemoteTunnel();
+  }
+});
 $('#copyRemoteTunnelLink')?.addEventListener('click', () => {
   const url = $('#remoteTunnelLink')?.href;
   if (url && url !== '#') {
@@ -1310,6 +1452,9 @@ $('#copyRemoteTunnelLink')?.addEventListener('click', () => {
 $('#btnOpenGitHubGuide')?.addEventListener('click', () => {
   $('#githubModal')?.classList.remove('hidden');
 });
+
+// Periodic tunnel status synchronization
+setInterval(refreshTunnelStatus, 6000);
 
 let currentPcMac = '9C:C7:D3:36:72:C6';
 async function loadWolInfo() {
@@ -1481,13 +1626,7 @@ $('#sleepBtn')?.addEventListener('click', () => triggerSleepMode());
 $('#btnSkipWake')?.addEventListener('click', dismissWakeOverlay);
 $('#btnWakeEnter')?.addEventListener('click', dismissWakeOverlay);
 $('#btnWakeReplay')?.addEventListener('click', () => {
-  const iframe = $('#wakeVideoFrame');
-  if (iframe) {
-    iframe.src = '';
-    setTimeout(() => {
-      iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
-    }, 150);
-  }
+  triggerWakeUpSequence({ isStartup: false, playVideo: true });
 });
 
 $('#btnCamSnapshot')?.addEventListener('click', () => {
@@ -1730,15 +1869,35 @@ $('#focusToggle').addEventListener('click', (e) => {
   toast(on ? 'Focus mode on: side panels hidden.' : 'Focus mode off.');
 });
 document.addEventListener('keydown', (e) => {
+  const overlay = $('#wakeUpOverlay');
+  if (overlay && !overlay.classList.contains('hidden')) {
+    if (e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      dismissWakeOverlay();
+      return;
+    }
+  }
   if (e.key === 'Escape') { closeModals(); stopSpeaking(); }
-  if (e.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) { e.preventDefault(); showView('command'); $('#chatInput').focus(); }
+  if (e.key === '/' && !['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+    e.preventDefault();
+    showView('command');
+    $('#chatInput')?.focus();
+  }
 });
 function greet() { addMsg('bot', 'Good day, Sir. Tell me what to do, for example: "open Spotify", "volume up" or "play lofi on YouTube".'); }
 syncLangSelect(); syncSpeakBtn(); refreshUI(); greet();
-if (state.wakeWordEnabled) {
-  window.addEventListener('click', () => {
-    if (state.wakeWordEnabled && !state.rec && !state.busy) {
-      startBackgroundVoiceListener();
-    }
-  }, { once: true });
-}
+refreshTunnelStatus();
+
+// Automatically play fullscreen holographic Stark HUD intro on program start
+triggerWakeUpSequence({ isStartup: true, playVideo: true });
+
+// Unlock audio policy and background listener on first pointer gesture
+window.addEventListener('pointerdown', () => {
+  const vid = $('#wakeLocalVideo');
+  if (vid && vid.muted) {
+    try { vid.muted = false; } catch {}
+  }
+  if (state.wakeWordEnabled && !state.rec && !state.busy) {
+    startBackgroundVoiceListener();
+  }
+}, { once: true });

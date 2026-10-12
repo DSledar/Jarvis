@@ -386,11 +386,16 @@
             </div>
             <p class="muted">Access your PC from your phone anywhere in the world (even on cellular data or outside home) via secure encrypted reverse SSH tunnel:</p>
             <div style="display:flex; gap:10px; align-items:center; margin:10px 0;">
-              <a id="remoteTunnelLink" href="#" target="_blank" style="flex:1; padding:12px 14px; background:#04121a; border:1px solid var(--card-border); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:14px; word-break:break-all;">Tunnel not started</a>
+              <a id="remoteTunnelLink" href="#" target="_blank" style="flex:1; padding:12px 14px; background:#04121a; border:1px solid var(--line); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:14px; word-break:break-all;">Tunnel not started</a>
               <button class="ghost" id="copyRemoteTunnelLink" type="button">Copy</button>
             </div>
-            <div class="row-btns" style="margin-top:10px; gap:8px;">
+            <div class="row-btns" style="margin-top:10px; gap:8px; align-items:center; flex-wrap:wrap;">
               <button class="primary" id="btnToggleTunnel" type="button">Start Remote Tunnel</button>
+              <select id="tunnelProviderSelect" style="max-width:180px; padding:9px 10px; font-size:13.5px; border-radius:3px; background:#04121a; border:1px solid var(--line); color:var(--text);">
+                <option value="serveo">Serveo (Fastest)</option>
+                <option value="localhost_run">localhost.run</option>
+                <option value="pinggy">Pinggy</option>
+              </select>
               <button class="ghost" id="btnOpenGitHubGuide" type="button">GitHub Hosting Guide</button>
             </div>
           </section>
@@ -472,36 +477,65 @@
 </div>
 
 <!-- ============================== modals ============================== -->
-<!-- Cinematic Wake Up Overlay -->
-<div id="wakeUpOverlay" class="wake-overlay hidden" role="dialog" aria-label="Wake Up JARVIS">
-  <div class="wake-backdrop"></div>
-  <div class="wake-modal">
-    <div class="wake-scanlines"></div>
-    <div class="wake-header">
-      <div class="wake-brand">
-        <div class="wake-arc-reactor"></div>
+<!-- Cinematic JARVIS Startup Intro & Wake Screen -->
+<div id="wakeUpOverlay" class="wake-overlay intro-cinematic-overlay hidden" role="dialog" aria-label="J.A.R.V.I.S Startup Intro">
+  <!-- 100% Fullscreen native video (zero YouTube branding) -->
+  <video id="wakeLocalVideo" class="intro-video-element" autoplay playsinline loop muted>
+    <source src="/assets/jarvis_intro.mp4" type="video/mp4">
+    <source src="/assets/jarvis_intro.webm" type="video/webm">
+  </video>
+  <!-- Borderless scaled YouTube fallback if local video cannot be played -->
+  <div id="wakeIframeWrapper" class="intro-iframe-wrapper hidden">
+    <iframe id="wakeVideoFrame" src="" allow="autoplay; encrypted-media" frameborder="0"></iframe>
+  </div>
+
+  <!-- Holographic HUD scanlines, vignette & targeting brackets -->
+  <div class="intro-vignette"></div>
+  <div class="intro-scanlines"></div>
+  <div class="intro-bracket top-left"></div>
+  <div class="intro-bracket top-right"></div>
+  <div class="intro-bracket bottom-left"></div>
+  <div class="intro-bracket bottom-right"></div>
+
+  <!-- Holographic HUD Content Container -->
+  <div class="intro-hud-content">
+    <div class="intro-top-banner">
+      <div class="intro-reactor-container">
+        <div class="intro-reactor-orb"></div>
         <div>
-          <b>J.A.R.V.I.S COMMAND SYSTEM</b>
-          <small id="wakeSubtitle">BOOT SEQUENCE // AUDIO SENSORS ARMED</small>
+          <b class="intro-title">J.A.R.V.I.S. MARK IV</b>
+          <small class="intro-sub" id="wakeSubtitle">BOOT SEQUENCE // NEURAL CORES ONLINE</small>
         </div>
       </div>
-      <button id="btnSkipWake" class="ghost mini">✕ Dismiss / Enter</button>
+      <button id="btnSkipWake" class="intro-skip-btn">✕ Skip Intro</button>
     </div>
 
-    <div class="wake-video-frame">
-      <iframe id="wakeVideoFrame" src="" allow="autoplay; encrypted-media; picture-in-picture" frameborder="0"></iframe>
-      <div class="wake-scanlines"></div>
+    <!-- Center Stark Diagnostics & Audio Reactor -->
+    <div class="intro-center-stage">
+      <div class="intro-center-reactor">
+        <div class="reactor-ring ring-outer"></div>
+        <div class="reactor-ring ring-middle"></div>
+        <div class="reactor-ring ring-inner"></div>
+        <div class="reactor-core-glow"></div>
+      </div>
+      <h1 class="intro-welcome-text" id="wakeStatusText">"Welcome back, Sir. All systems initialized and online."</h1>
+      <div class="intro-telemetry-chips">
+        <span>CPU: 100% CALIBRATED</span>
+        <span>RAM: SYNCHRONIZED</span>
+        <span>AUDIO: ARMED</span>
+        <span>VISION: READY</span>
+      </div>
+
+      <div class="intro-progress-track">
+        <div class="intro-progress-fill" id="introProgressBar"></div>
+      </div>
+      <div class="intro-progress-label" id="introProgressLabel">BOOT SEQUENCE: 100% COMPLETE</div>
     </div>
 
-    <div class="wake-footer">
-      <div class="wake-status-line">
-        <span class="wake-dot"></span>
-        <span id="wakeStatusText">"Welcome back, Sir. All systems initialized and online."</span>
-      </div>
-      <div class="wake-buttons" style="display:flex; gap:8px;">
-        <button id="btnWakeEnter" class="primary">Enter Command Center</button>
-        <button id="btnWakeReplay" class="ghost">Replay Video</button>
-      </div>
+    <!-- Bottom Controls -->
+    <div class="intro-bottom-controls">
+      <button id="btnWakeEnter" class="intro-enter-btn">⚡ ENTER COMMAND CENTER</button>
+      <button id="btnWakeReplay" class="intro-replay-btn">↻ Replay Intro</button>
     </div>
   </div>
 </div>

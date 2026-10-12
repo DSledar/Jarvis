@@ -20,7 +20,7 @@ SETTINGS_FILE = ROOT / "data" / "remote_settings.json"
 STATE: dict[str, Any] = {
     "active": False,
     "url": "",
-    "provider": "localhost_run",
+    "provider": "serveo",
     "pid": None,
     "started_at": 0,
     "last_error": "",
@@ -28,13 +28,14 @@ STATE: dict[str, Any] = {
 }
 
 _PROCESS: subprocess.Popen | None = None
-_LOCK = threading.Lock()
+_LOCK = threading.RLock()
 
 TUNNEL_PATTERNS = [
+    re.compile(r"https://[a-zA-Z0-9_\-]+\.serveousercontent\.com"),
+    re.compile(r"https://[a-zA-Z0-9_\-]+\.serveo\.net"),
     re.compile(r"https://[a-zA-Z0-9_\-]+\.lhr\.life"),
     re.compile(r"https://[a-zA-Z0-9_\-]+\.a\.pinggy\.link"),
     re.compile(r"https://[a-zA-Z0-9_\-]+\.pinggy\.link"),
-    re.compile(r"https://[a-zA-Z0-9_\-]+\.serveo\.net"),
 ]
 
 
@@ -44,7 +45,7 @@ def _load_settings() -> dict:
             return json.loads(SETTINGS_FILE.read_text(encoding="utf-8"))
         except Exception:
             pass
-    return {"custom_url": "", "preferred_provider": "localhost_run"}
+    return {"custom_url": "", "preferred_provider": "serveo"}
 
 
 def _save_settings(data: dict) -> None:
@@ -59,6 +60,7 @@ def get_tunnel_status() -> dict[str, Any]:
             poll = _PROCESS.poll()
             if poll is not None:
                 STATE["active"] = False
+                STATE["url"] = ""
                 STATE["pid"] = None
                 if not STATE["last_error"]:
                     STATE["last_error"] = f"Tunnel exited with code {poll}"
@@ -105,22 +107,33 @@ def _reader_thread(proc: subprocess.Popen, provider: str) -> None:
 
 def _kill_proc(proc: subprocess.Popen) -> None:
     try:
-        if proc.stdout:
-            try:
-                proc.stdout.close()
-            except Exception:
-                pass
-        if platform.system().lower() == "windows":
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                           capture_output=True, timeout=2)
+        if platform.system().lower() == "windows" and proc.pid:
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=2,
+            )
         else:
             proc.kill()
+    except Exception:
+        try:
+            proc.kill()
+        except Exception:
+            pass
+    try:
+        if proc.stdout:
+            proc.stdout.close()
+    except Exception:
+        pass
+    try:
+        proc.wait(timeout=1)
     except Exception:
         pass
 
 
 
-def start_tunnel(provider: str = "localhost_run", port: int = 8000) -> dict[str, Any]:
+def start_tunnel(provider: str = "serveo", port: int = 8000) -> dict[str, Any]:
     """Starts a secure reverse SSH tunnel to expose port 8000 to the internet over HTTPS."""
     global _PROCESS
 
@@ -138,35 +151,36 @@ def start_tunnel(provider: str = "localhost_run", port: int = 8000) -> dict[str,
 
         null_file = "NUL" if platform.system().lower() == "windows" else "/dev/null"
 
-        # Default provider is localhost.run
-        if provider == "serveo":
+        # Serveo is default and fastest; localhost.run is fallback
+        if provider == "localhost_run":
             cmd = [
                 ssh_bin,
-                "-R", f"80:localhost:{port}",
-                "serveo.net",
+                "-R", f"80:127.0.0.1:{port}",
+                "nokey@localhost.run",
                 "-o", "StrictHostKeyChecking=no",
                 "-o", f"UserKnownHostsFile={null_file}",
-                "-o", "ServerAliveInterval=30",
+                "-o", "ServerAliveInterval=15",
+                "-o", "ServerAliveCountMax=3",
             ]
         elif provider == "pinggy":
             cmd = [
                 ssh_bin,
                 "-p", "443",
-                "-R", f"0:localhost:{port}",
+                "-R", f"0:127.0.0.1:{port}",
                 "a.pinggy.io",
                 "-o", "StrictHostKeyChecking=no",
                 "-o", f"UserKnownHostsFile={null_file}",
-                "-o", "ServerAliveInterval=30",
+                "-o", "ServerAliveInterval=15",
             ]
         else:
-            provider = "localhost_run"
+            provider = "serveo"
             cmd = [
                 ssh_bin,
-                "-R", f"80:localhost:{port}",
-                "nokey@localhost.run",
+                "-R", f"80:127.0.0.1:{port}",
+                "serveo.net",
                 "-o", "StrictHostKeyChecking=no",
                 "-o", f"UserKnownHostsFile={null_file}",
-                "-o", "ServerAliveInterval=30",
+                "-o", "ServerAliveInterval=15",
                 "-o", "ServerAliveCountMax=3",
             ]
 
@@ -196,17 +210,25 @@ def start_tunnel(provider: str = "localhost_run", port: int = 8000) -> dict[str,
             STATE["last_error"] = str(exc)
             return {"active": False, "error": str(exc)}
 
-    # Wait up to 10 seconds for URL detection
-    for _ in range(100):
+    # Wait up to 8 seconds for URL detection
+    for _ in range(80):
         time.sleep(0.1)
         if STATE["url"]:
             break
+
+    # If first provider failed to produce URL, auto-try secondary provider
+    if not STATE["url"] and provider == "serveo":
+        with _LOCK:
+            if _PROCESS is not None:
+                _kill_proc(_PROCESS)
+                _PROCESS = None
+        return start_tunnel(provider="localhost_run", port=port)
 
     return get_tunnel_status()
 
 
 def stop_tunnel() -> dict[str, Any]:
-    """Stops the active SSH tunnel."""
+    """Stops the active SSH tunnel and cleans up all processes."""
     global _PROCESS
     with _LOCK:
         if _PROCESS is not None:
@@ -216,6 +238,7 @@ def stop_tunnel() -> dict[str, Any]:
         STATE["active"] = False
         STATE["url"] = ""
         STATE["pid"] = None
+        STATE["last_error"] = ""
         return get_tunnel_status()
 
 
