@@ -686,11 +686,11 @@
       }
     };
 
-    // Tap directly on the live video stream sends desktop mouse click with ripple
+    // Tap directly on the live video stream sends desktop mouse click with ripple at exact position
     liveScreenStream.onclick = async (e) => {
       const rect = liveScreenStream.getBoundingClientRect();
-      const xPct = (e.clientX - rect.left) / rect.width;
-      const yPct = (e.clientY - rect.top) / rect.height;
+      const xPct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const yPct = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
 
       // Show visual ripple
       const ripple = document.createElement('div');
@@ -700,14 +700,28 @@
       document.getElementById('streamWrapper').appendChild(ripple);
       setTimeout(() => ripple.remove(), 500);
 
-      // Trigger PC click
+      // Trigger PC click at exact tapped position
       try {
-        await fetch('/api/phone/action', {
+        await fetch('/api/phone/mouse', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, action: 'click' })
+          body: JSON.stringify({ token, action: 'click', x_pct: xPct, y_pct: yPct, btn: 'left' })
         });
         if (navigator.vibrate) navigator.vibrate(20);
+      } catch (err) {}
+    };
+
+    liveScreenStream.ondblclick = async (e) => {
+      const rect = liveScreenStream.getBoundingClientRect();
+      const xPct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const yPct = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
+      try {
+        await fetch('/api/phone/mouse', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, action: 'double_click', x_pct: xPct, y_pct: yPct })
+        });
+        if (navigator.vibrate) navigator.vibrate([20, 40, 20]);
       } catch (err) {}
     };
 

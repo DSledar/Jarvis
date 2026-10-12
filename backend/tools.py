@@ -320,6 +320,14 @@ def lock_pc() -> str:
     return "Locking the PC."
 
 
+@tool("sleep_pc", "Put the Windows PC into sleep mode (suspend / standby).")
+def sleep_pc() -> str:
+    if not IS_WINDOWS:
+        raise ToolError("Sleep mode is only built for Windows.")
+    import phone_control
+    return phone_control.sleep_pc()
+
+
 @tool("show_desktop", "Minimise everything and show the desktop (Win+D).")
 def show_desktop() -> str:
     _gui().hotkey("win", "d")
@@ -1079,7 +1087,7 @@ CATEGORIES = {
     "Apps and web": ["open_app", "list_apps", "open_url", "web_search", "youtube_play", "youtube_search", "spotify_search"],
     "Media and sound": ["media_control"],
     "Mouse and keyboard": ["mouse_click", "mouse_move", "scroll", "type_text", "press_key", "show_desktop", "screen_size"],
-    "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "take_screenshot", "look_at_screen", "see_pc_screen", "see_phone_screen", "clipboard", "lock_pc"],
+    "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "take_screenshot", "look_at_screen", "see_pc_screen", "see_phone_screen", "clipboard", "lock_pc", "sleep_pc"],
     "Python & Coding": ["execute_python", "analyze_code", "python_doc", "write_code_file"],
     "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "toggle_phone_flashlight", "vibrate_phone", "speak_on_phone", "scan_network_devices", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
     "System and files": ["system_info", "get_time", "list_processes", "list_dir", "read_file", "open_path"],

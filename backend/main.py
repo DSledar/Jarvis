@@ -374,6 +374,8 @@ async def phone_action(payload: PhoneActionRequest) -> dict:
         result = tools.show_desktop()
     elif act == "lock":
         result = tools.lock_pc()
+    elif act == "sleep":
+        result = phone_control.sleep_pc()
     elif act.startswith("volume_") or act in ("mute", "play_pause", "next", "previous"):
         result = tools.media_control(act)
     elif act == "screenshot":
@@ -567,9 +569,11 @@ async def phone_photo_request() -> dict:
 
 class PhoneMouseRequest(BaseModel):
     token: str
-    action: str  # move, click, right_click, double_click, scroll
+    action: str  # move, move_to, click, right_click, double_click, scroll
     dx: float = 0
     dy: float = 0
+    x_pct: float | None = None
+    y_pct: float | None = None
     btn: str = "left"
 
 
@@ -579,16 +583,40 @@ async def phone_mouse(payload: PhoneMouseRequest) -> dict:
     if not s:
         raise HTTPException(status_code=401, detail="Unauthorized")
     import pyautogui
+    pyautogui.FAILSAFE = False
     act = payload.action.lower()
     try:
         if act == "move":
             pyautogui.moveRel(int(payload.dx), int(payload.dy), _pause=False)
+        elif act == "move_to" and payload.x_pct is not None and payload.y_pct is not None:
+            sw, sh = pyautogui.size()
+            tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
+            ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
+            pyautogui.moveTo(tx, ty, _pause=False)
         elif act == "click":
-            pyautogui.click(button=payload.btn)
+            if payload.x_pct is not None and payload.y_pct is not None:
+                sw, sh = pyautogui.size()
+                tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
+                ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
+                pyautogui.click(x=tx, y=ty, button=payload.btn or "left")
+            else:
+                pyautogui.click(button=payload.btn or "left")
         elif act == "right_click":
-            pyautogui.rightClick()
+            if payload.x_pct is not None and payload.y_pct is not None:
+                sw, sh = pyautogui.size()
+                tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
+                ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
+                pyautogui.rightClick(x=tx, y=ty)
+            else:
+                pyautogui.rightClick()
         elif act == "double_click":
-            pyautogui.doubleClick()
+            if payload.x_pct is not None and payload.y_pct is not None:
+                sw, sh = pyautogui.size()
+                tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
+                ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
+                pyautogui.doubleClick(x=tx, y=ty)
+            else:
+                pyautogui.doubleClick()
         elif act == "scroll":
             pyautogui.scroll(int(payload.dy))
         return {"ok": True}

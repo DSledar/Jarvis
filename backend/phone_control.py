@@ -356,28 +356,63 @@ def send_wake_on_lan(mac_address: str, broadcast_ip: str = "255.255.255.255", po
 
 
 def sleep_pc() -> str:
-    """Puts Windows PC to sleep mode."""
+    """Puts Windows PC to real sleep mode (supporting both Modern Standby S0 and Legacy S3)."""
     if platform.system().lower() != "windows":
         return "Sleep command is only supported on Windows."
-    try:
-        # Suspend state (Sleep)
-        subprocess.Popen(["rundll32.exe", "powrprof.dll,SetSuspendState", "0,1,0"], shell=True)
-        return "PC entering sleep mode now. Use Wake-on-LAN from your phone to wake it up."
-    except Exception as exc:
-        return f"Failed to put PC to sleep: {exc}"
+
+    def _execute_sleep() -> None:
+        import ctypes
+        time.sleep(0.7)  # Allow HTTP response to reach the phone companion before sleep begins
+
+        # 1. Lock the workstation so PC is fully password-protected while sleeping
+        try:
+            ctypes.windll.user32.LockWorkStation()
+        except Exception:
+            pass
+
+        # 2. On traditional S3/S4 hardware, invoke SetSuspendState(0, 0, 0)
+        try:
+            ctypes.windll.powrprof.SetSuspendState(0, 0, 0)
+        except Exception:
+            pass
+
+        # 3. On Modern Standby (S0 Low Power Idle) laptops, turning off monitor puts Windows into S0 sleep
+        try:
+            # HWND_BROADCAST = 0xFFFF, WM_SYSCOMMAND = 0x0112, SC_MONITORPOWER = 0xF170, 2 = Monitor Off
+            ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
+        except Exception:
+            pass
+
+        # 4. Fallback via background PowerShell to ensure low-power standby state
+        try:
+            subprocess.Popen([
+                "powershell.exe", "-WindowStyle", "Hidden", "-Command",
+                "(Add-Type '[DllImport(\"user32.dll\")]public static extern int SendMessage(int h,int m,int w,int l);' -Name f -Namespace n -PassThru)::SendMessage(0xffff,0x112,0xf170,2)"
+            ], creationflags=subprocess.CREATE_NO_WINDOW if platform.system().lower() == "windows" else 0)
+        except Exception:
+            pass
+
+    threading.Thread(target=_execute_sleep, daemon=True).start()
+    return "PC is entering sleep mode now. Use Wake-on-LAN from your phone or Android WoL to wake it up."
 
 
 # --------------------------------------------------------------------------- Real-Time PC Screen Capture
 def capture_pc_screen_bytes(max_dim: int = 1280, quality: int = 65) -> bytes:
-    """Captures the PC screen and returns compressed JPEG bytes for real-time mobile viewing."""
+    """Captures the PC screen, draws the live hardware mouse cursor, and returns compressed JPEG bytes."""
     img = None
+    orig_w, orig_h = 1920, 1080
+
     try:
         from PIL import ImageGrab
         img = ImageGrab.grab()
+        if img:
+            orig_w, orig_h = img.size
     except Exception:
         try:
             import pyautogui
             img = pyautogui.screenshot()
+            if img:
+                orig_w, orig_h = img.size
         except Exception:
             pass
 
@@ -390,12 +425,70 @@ def capture_pc_screen_bytes(max_dim: int = 1280, quality: int = 65) -> bytes:
         draw.text((60, 210), f"Host: {socket.gethostname()} | Status: Screen Locked / Sleep Mode", fill=(226, 232, 240))
         draw.text((60, 260), "To view live desktop stream, unlock your PC or press Wake PC.", fill=(148, 163, 184))
         draw.rectangle([(50, 120), (910, 420)], outline=(45, 55, 72), width=2)
+        orig_w, orig_h = 960, 540
+
+    # Retrieve current live mouse position
+    mx, my = None, None
+    try:
+        import pyautogui
+        pos = pyautogui.position()
+        if pos:
+            mx, my = int(pos.x), int(pos.y)
+    except Exception:
+        pass
+
+    if mx is None or my is None:
+        try:
+            import ctypes
+            from ctypes import wintypes
+            pt = wintypes.POINT()
+            if ctypes.windll.user32.GetCursorPos(ctypes.byref(pt)):
+                mx, my = int(pt.x), int(pt.y)
+        except Exception:
+            pass
 
     # Scale down if larger than max_dim to maintain fast streaming
     w, h = img.size
+    scale = 1.0
     if max(w, h) > max_dim:
         scale = max_dim / max(w, h)
         img = img.resize((int(w * scale), int(h * scale)), Image.Resampling.BILINEAR)
+
+    # Render hardware mouse cursor onto captured frame so it is visible on mobile
+    if mx is not None and my is not None:
+        try:
+            cx = int(mx * scale)
+            cy = int(my * scale)
+            cur_w, cur_h = img.size
+
+            if 0 <= cx < cur_w and 0 <= cy < cur_h:
+                from PIL import ImageDraw
+                draw = ImageDraw.Draw(img)
+
+                # High-contrast targeting halo around cursor hotspot for mobile touch visibility
+                halo_r = 7
+                draw.ellipse(
+                    [(cx - halo_r, cy - halo_r), (cx + halo_r, cy + halo_r)],
+                    outline=(56, 189, 248),
+                    width=2
+                )
+
+                # Precision Windows pointer arrow (22px)
+                arrow = [
+                    (cx, cy),
+                    (cx, cy + 22),
+                    (cx + 6, cy + 17),
+                    (cx + 11, cy + 27),
+                    (cx + 14, cy + 25),
+                    (cx + 9, cy + 15),
+                    (cx + 16, cy + 15),
+                ]
+                # Drop shadow
+                draw.polygon([(x + 1, y + 1) for x, y in arrow], fill=(0, 0, 0), outline=(0, 0, 0))
+                # High-contrast white arrow with black border
+                draw.polygon(arrow, fill=(255, 255, 255), outline=(0, 0, 0))
+        except Exception:
+            pass
 
     buf = io.BytesIO()
     img.convert("RGB").save(buf, format="JPEG", quality=quality, optimize=True)
