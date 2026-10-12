@@ -300,14 +300,25 @@ body.focus .rail { opacity: .55; }
   height: 100vh !important;
   z-index: 99999 !important;
   background: #000 !important;
-  display: flex !important;
+  display: flex;
   flex-direction: column !important;
   align-items: center !important;
   justify-content: center !important;
   overflow: hidden !important;
   margin: 0 !important;
   padding: 0 !important;
-  animation: introFadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: introFadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: opacity 0.35s ease, visibility 0.35s ease;
+}
+
+/* Explicit high-specificity hidden rule so it can NEVER jam */
+.intro-cinematic-overlay.hidden,
+.wake-overlay.hidden,
+#wakeUpOverlay.hidden {
+  display: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 .intro-video-element {
   position: absolute;

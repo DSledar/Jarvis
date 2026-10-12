@@ -278,8 +278,12 @@ function triggerWakeUpSequence(opts = true) {
   if (introProgressInterval) { clearInterval(introProgressInterval); introProgressInterval = null; }
 
   if (overlay) {
-    overlay.style.opacity = '1';
     overlay.classList.remove('hidden');
+    overlay.style.display = 'flex';
+    overlay.style.visibility = 'visible';
+    overlay.style.pointerEvents = 'auto';
+    overlay.style.opacity = '1';
+    overlay.style.transition = 'opacity 0.35s ease';
 
     if (subtitle) {
       subtitle.textContent = isStartup
@@ -291,29 +295,33 @@ function triggerWakeUpSequence(opts = true) {
     }
 
     // Play native 1080p local intro video (zero YouTube branding)
-    if (playVideo) {
-      if (localVideo) {
-        localVideo.style.display = 'block';
-        if (iframeWrapper) iframeWrapper.classList.add('hidden');
-        localVideo.currentTime = 0;
-        localVideo.muted = true; // start muted for 100% browser autoplay compliance
+    if (playVideo && localVideo) {
+      localVideo.style.display = 'block';
+      if (iframeWrapper) iframeWrapper.classList.add('hidden');
+      localVideo.currentTime = 0;
+      localVideo.muted = true; // start muted for compliance
 
-        const playPromise = localVideo.play();
-        if (playPromise !== undefined) {
-          playPromise
-            .then(() => {
-              // Try unmuting once playback starts
-              try { localVideo.muted = false; } catch {}
-            })
-            .catch(() => {
-              // Local video playback failed, fallback to scaled YouTube iframe
+      // When the intro video finishes, automatically enter Command Center!
+      localVideo.onended = () => {
+        dismissWakeOverlay();
+      };
+
+      const playPromise = localVideo.play();
+      if (playPromise !== undefined) {
+        playPromise
+          .then(() => {
+            try { localVideo.muted = false; } catch {}
+          })
+          .catch(() => {
+            localVideo.muted = true;
+            localVideo.play().catch(() => {
               if (iframeWrapper && iframe) {
                 localVideo.style.display = 'none';
                 iframeWrapper.classList.remove('hidden');
                 iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
               }
             });
-        }
+          });
       }
     }
 
@@ -326,13 +334,13 @@ function triggerWakeUpSequence(opts = true) {
       const steps = [
         { pct: 20, text: '20% - NEURAL NETWORKS SYNCHRONIZED' },
         { pct: 45, text: '45% - QUANTUM SENSORS CALIBRATED' },
-        { pct: 75, text: '75% - PERIPHERALS & ADAPTERS ARMED' },
-        { pct: 90, text: '90% - SECURITY PROTOCOLS VERIFIED' },
+        { pct: 70, text: '70% - PERIPHERALS & ADAPTERS ARMED' },
+        { pct: 88, text: '88% - SECURITY PROTOCOLS VERIFIED' },
         { pct: 100, text: '100% - J.A.R.V.I.S. MARK IV OPERATIONAL' },
       ];
 
       introProgressInterval = setInterval(() => {
-        progress += 4;
+        progress += 3;
         if (progress > 100) progress = 100;
         progressBar.style.width = progress + '%';
 
@@ -344,16 +352,20 @@ function triggerWakeUpSequence(opts = true) {
         if (progress >= 100) {
           clearInterval(introProgressInterval);
           introProgressInterval = null;
+          // Auto-transition into Command Center 1 second after 100% calibration
+          if (!introTimer) {
+            introTimer = setTimeout(() => {
+              dismissWakeOverlay();
+            }, 1000);
+          }
         }
-      }, 110);
+      }, 100);
     }
 
-    // Auto-enter Command Center on initial startup after 5.5 seconds
-    if (isStartup) {
-      introTimer = setTimeout(() => {
-        dismissWakeOverlay();
-      }, 5500);
-    }
+    // Safety timeout: automatically enter Command Center after 6.5 seconds max
+    introTimer = setTimeout(() => {
+      dismissWakeOverlay();
+    }, 6500);
   }
 
   logActivity('JARVIS systems online (' + (isStartup ? 'Startup intro' : 'Wake-up sequence') + ' initiated)', true);
@@ -372,19 +384,26 @@ function dismissWakeOverlay() {
   const iframe = $('#wakeVideoFrame');
 
   if (localVideo) {
-    try { localVideo.pause(); } catch {}
+    try {
+      localVideo.pause();
+      localVideo.currentTime = 0;
+    } catch {}
   }
   if (iframe) iframe.src = '';
   if (iframeWrapper) iframeWrapper.classList.add('hidden');
 
-  if (overlay && !overlay.classList.contains('hidden')) {
-    overlay.style.transition = 'opacity 0.4s ease';
+  if (overlay) {
+    // Disable pointer events immediately so user can interact with the app right away
+    overlay.style.pointerEvents = 'none';
+    overlay.style.transition = 'opacity 0.3s ease, visibility 0.3s ease';
     overlay.style.opacity = '0';
+
     setTimeout(() => {
       overlay.classList.add('hidden');
-      overlay.style.opacity = '1';
-      overlay.style.transition = '';
-    }, 400);
+      overlay.style.display = 'none';
+      overlay.style.visibility = 'hidden';
+      overlay.style.pointerEvents = 'none';
+    }, 300);
   }
   $('#chatInput')?.focus();
 }
