@@ -23,8 +23,8 @@
       <button class="nav-btn" data-view="agents"><svg class="ic"><use href="#i-bolt"/></svg>Agents and tools</button>
       <button class="nav-btn" data-view="memory"><svg class="ic"><use href="#i-chip"/></svg>Memory</button>
       <button class="nav-btn" data-view="media"><svg class="ic"><use href="#i-note"/></svg>Media</button>
-      <button class="nav-btn" data-view="phone-control"><svg class="ic"><use href="#i-phone"/></svg>Phone Control<span class="badge hidden" id="phoneControlBadge">0</span></button>
-      <button class="nav-btn" data-view="devices"><svg class="ic"><use href="#i-phone"/></svg>Nearby & Network<span class="badge hidden" id="phoneBadge">0</span></button>
+      <button class="nav-btn" data-view="phone-control"><svg class="ic"><use href="#i-phone"/></svg>📱 Phone & Mobile Hub<span class="badge hidden" id="phoneControlBadge">0</span></button>
+      <button class="nav-btn" data-view="devices"><svg class="ic"><use href="#i-globe"/></svg>Nearby & Network<span class="badge hidden" id="phoneBadge">0</span></button>
       <button class="nav-btn" data-view="security"><svg class="ic"><use href="#i-shield"/></svg>Security<span class="badge hidden" id="pendingBadge">0</span></button>
     </nav>
 
@@ -227,8 +227,8 @@
       <div class="page">
         <div class="page-head">
           <div>
-            <h2>📱 Phone Control & Open Phone</h2>
-            <p>Control, unlock, and wake your phone directly from your laptop. View live screen captures, trigger navigation keys, toggle the flashlight, vibrate, speak aloud, and sync data.</p>
+            <h2>📱 Phone & Remote Control Hub (کۆنتڕۆڵکردنی مۆبایل و لاپتۆپ)</h2>
+            <p>Connect your phone with a quick QR scan. Control your phone's hardware from your laptop, or use your phone as a wireless trackpad, keyboard, and screen monitor for this laptop.</p>
           </div>
           <div class="page-actions">
             <button class="ghost" id="btnRefreshPhoneCtrl">🔄 Refresh Status</button>
@@ -236,25 +236,90 @@
           </div>
         </div>
 
+        <!-- 3-Step Process Banner -->
+        <div class="phone-steps-banner">
+          <div class="phone-step-pill active">
+            <span class="phone-step-num">01</span>
+            <div class="phone-step-text">
+              <b>Step 1: Connect Phone</b>
+              <small>هەنگاوی ١: سکانکردن و پەیوەستبوون</small>
+            </div>
+          </div>
+          <div class="phone-step-pill">
+            <span class="phone-step-num">02</span>
+            <div class="phone-step-text">
+              <b>Step 2: Control Phone From Laptop</b>
+              <small>هەنگاوی ٢: کۆنتڕۆڵی مۆبایل لە لاپتۆپەوە</small>
+            </div>
+          </div>
+          <div class="phone-step-pill">
+            <span class="phone-step-num">03</span>
+            <div class="phone-step-text">
+              <b>Step 3: Control Laptop From Phone</b>
+              <small>هەنگاوی ٣: کۆنتڕۆڵی لاپتۆپ لە مۆبایلەوە</small>
+            </div>
+          </div>
+        </div>
+
+        <!-- ==================== STEP 1: CONNECT PHONE ==================== -->
+        <div class="phone-step-divider">Step 1 // Connect Phone & Access (هەنگاوی ١: پەیوەستکردنی مۆبایل بە لاپتۆپ)</div>
         <div class="media-grid">
-          <!-- Card 1: Connected Phone & Battery Status -->
+          <!-- Card 1A: 1-Tap QR Code & Portal URL -->
           <section class="panel">
             <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
-              <h3 style="margin:0;">Device Link Status</h3>
+              <h3 style="margin:0;">📸 Scan QR Code with Phone Camera</h3>
+              <div style="display:flex; gap:6px;">
+                <button type="button" class="mini primary" id="btnQrModeLocal">Wi-Fi QR</button>
+                <button type="button" class="mini ghost" id="btnQrModeTunnel">Remote 4G QR</button>
+              </div>
+            </div>
+            <p class="muted" style="margin:2px 0 8px;">Open your phone camera or QR scanner and point it at this screen to open the companion app instantly (no manual typing needed):</p>
+            
+            <div class="phone-qr-card">
+              <div class="phone-qr-wrapper">
+                <img id="phoneConnectQr" src="" alt="Scan QR Code with Phone" />
+              </div>
+              <p style="margin:0; font-size:13.5px; color:var(--cyan); font-weight:600;">
+                📸 کامێرای مۆبایلەکەت بکەرەوە و لێی نزیک بکەرەوە بۆ کردنەوەی یەکسەر
+              </p>
+            </div>
+
+            <div style="margin-top:10px;">
+              <span class="muted" style="font-size:13px;">Or open this portal link in phone browser:</span>
+              <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
+                <a id="phoneCtrlPortalLink" href="/phone" target="_blank" style="flex:1; padding:9px 12px; background:#04121a; border:1px solid var(--cyan-dim); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:13.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">http://.../phone</a>
+                <button class="ghost mini" id="btnCopyCtrlPortalLink" type="button">Copy Link</button>
+              </div>
+            </div>
+
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid var(--line-soft);">
+              <span class="muted" style="font-size:13px;">🔑 Access Passcode (پاسکۆدی چوونەژوورەوە):</span>
+              <form class="inline-form" id="passcodeForm" style="margin-top:6px;">
+                <input id="passcodeInput" type="text" placeholder="Passcode (e.g. 1234)" />
+                <button class="primary" type="submit">Change Passcode</button>
+              </form>
+            </div>
+          </section>
+
+          <!-- Card 1B: Connection Status & Remote Access -->
+          <section class="panel">
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">Connection & Network Status</h3>
               <span id="phoneLinkBadge" class="tunnel-status-badge stopped">● Disconnected</span>
             </div>
-            <div id="phoneStatusDetails" style="margin-top:12px; display:flex; flex-direction:column; gap:10px;">
+            
+            <div id="phoneStatusDetails" style="margin-top:10px; display:flex; flex-direction:column; gap:10px;">
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="muted">Connected Model:</span>
+                <span class="muted">Connected Phone Model:</span>
                 <b id="phoneModelName" style="color:var(--cyan);">Scanning...</b>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="muted">IP / Connection:</span>
+                <span class="muted">Local Wi-Fi IP:</span>
                 <code id="phoneIpAddress" style="color:var(--amber);">--</code>
               </div>
               <div>
                 <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                  <span class="muted">Battery Level:</span>
+                  <span class="muted">Phone Battery:</span>
                   <b id="phoneBatteryText">--%</b>
                 </div>
                 <div style="height:10px; background:#04121a; border:1px solid var(--line); border-radius:5px; overflow:hidden;">
@@ -267,43 +332,39 @@
               </div>
             </div>
 
-            <div style="margin-top:14px; padding-top:12px; border-top:1px solid var(--line-soft);">
-              <span class="muted" style="font-size:13px;">Companion Web Portal:</span>
-              <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
-                <a id="phoneCtrlPortalLink" href="/phone" target="_blank" style="flex:1; padding:8px 10px; background:#04121a; border:1px solid var(--cyan-dim); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:13px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">http://.../phone</a>
-                <button class="ghost mini" id="btnCopyCtrlPortalLink" type="button">Copy</button>
+            <!-- Remote Access Outside Home (4G / 5G) -->
+            <div style="margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);">
+              <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 style="margin:0; font-size:14px; color:var(--cyan);">🌐 Remote Tunnel (Cellular 4G / 5G / لە دەرەوەی ماڵ)</h4>
+                <span id="remoteTunnelBadge" class="tunnel-status-badge stopped">● Offline</span>
               </div>
-            </div>
-          </section>
+              <p class="muted" style="margin:6px 0 8px; font-size:12.5px;">Control your PC from your phone anywhere in the world even on different Wi-Fi networks or mobile cellular data:</p>
+              
+              <div style="display:flex; gap:8px; align-items:center; margin-bottom:8px;">
+                <a id="remoteTunnelLink" href="#" target="_blank" style="flex:1; padding:8px 10px; background:#04121a; border:1px solid var(--line); border-radius:3px; color:var(--cyan); text-decoration:none; font-family:var(--mono); font-size:12.5px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">Tunnel not started</a>
+                <button class="ghost mini" id="copyRemoteTunnelLink" type="button">Copy</button>
+              </div>
 
-          <!-- Card 2: Open & Unlock Phone -->
-          <section class="panel">
-            <h3>🔓 Open & Unlock Phone</h3>
-            <p class="muted">Send unlock PIN/passcode to wake phone screen, dismiss lockscreen swipe, and activate companion wake-lock:</p>
-            <form class="inline-form" id="phoneUnlockForm" style="margin-top:10px;">
-              <input id="phoneUnlockPin" type="password" placeholder="Phone PIN or passcode (e.g. 1234)" autocomplete="off" />
-              <button class="primary" type="submit">Unlock Phone</button>
-            </form>
-            
-            <h4 style="margin:16px 0 8px; font-size:14.5px; color:var(--cyan);">Quick Phone Keys & Gestures</h4>
-            <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px;">
-              <button class="ghost" id="btnPhoneKeyWake" data-key="wake" type="button">⏻ Wake Screen</button>
-              <button class="ghost" id="btnPhoneKeySwipe" data-key="swipe_up" type="button">⬆️ Swipe Up</button>
-              <button class="ghost" id="btnPhoneKeyHome" data-key="home" type="button">🏠 Home</button>
-              <button class="ghost" id="btnPhoneKeyBack" data-key="back" type="button">◀️ Back</button>
-              <button class="ghost" id="btnPhoneKeyApps" data-key="menu" type="button">📑 Apps</button>
-              <button class="ghost" id="btnPhoneKeyPower" data-key="power" type="button">🔒 Lock/Power</button>
-              <button class="ghost" id="btnPhoneKeyVolUp" data-key="volup" type="button">🔊 Vol +</button>
-              <button class="ghost" id="btnPhoneKeyVolDown" data-key="voldown" type="button">🔉 Vol -</button>
+              <div class="row-btns" style="gap:8px; align-items:center; flex-wrap:wrap;">
+                <button class="primary" id="btnToggleTunnel" type="button">Start Remote Tunnel</button>
+                <select id="tunnelProviderSelect" style="max-width:160px; padding:8px 10px; font-size:13px; border-radius:3px; background:#04121a; border:1px solid var(--line); color:var(--text);">
+                  <option value="serveo">Serveo (Fastest)</option>
+                  <option value="localhost_run">localhost.run</option>
+                  <option value="pinggy">Pinggy</option>
+                </select>
+                <button class="ghost mini" id="btnOpenGitHubGuide" type="button">GitHub Guide</button>
+              </div>
             </div>
           </section>
         </div>
 
-        <div class="media-grid" style="margin-top:16px;">
-          <!-- Card 3: Live Phone Screen Viewer -->
+        <!-- ==================== STEP 2: LAPTOP CONTROLS PHONE ==================== -->
+        <div class="phone-step-divider">Step 2 // Control Phone From Laptop (هەنگاوی ٢: کۆنتڕۆڵی مۆبایل لە لاپتۆپەوە)</div>
+        <div class="media-grid">
+          <!-- Card 2A: Screen Mirror & Unlock -->
           <section class="panel">
             <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
-              <h3 style="margin:0;">📸 Phone Screen & Mirroring</h3>
+              <h3 style="margin:0;">📸 Phone Screen Mirror & Unlock</h3>
               <div style="display:flex; gap:8px; align-items:center;">
                 <label style="font-size:12.5px; display:flex; align-items:center; gap:5px; cursor:pointer;" class="muted">
                   <input type="checkbox" id="chkAutoRefreshPhoneScreen" style="width:auto; margin:0;" /> Auto-refresh
@@ -311,40 +372,125 @@
                 <button class="ghost mini" id="btnCapturePhoneScreen" type="button">📸 Capture Now</button>
               </div>
             </div>
-            <p class="muted" style="margin-top:4px;">View latest screen capture or camera snapshot taken from your phone:</p>
-
-            <div class="phone-screen-viewport" id="phoneScreenViewport" style="margin-top:12px; height:320px; background:#020b10; border:1px solid var(--line); border-radius:6px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+            
+            <div class="phone-screen-viewport" id="phoneScreenViewport" style="margin-top:10px; height:260px; background:#020b10; border:1px solid var(--line); border-radius:6px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
               <img id="phoneScreenImg" src="" alt="Phone screen" style="max-height:100%; max-width:100%; object-fit:contain; display:none;" />
-              <div id="phoneScreenPlaceholder" style="text-align:center; padding:20px; color:var(--muted);">
-                <div style="font-size:36px; margin-bottom:8px;">📱</div>
+              <div id="phoneScreenPlaceholder" style="text-align:center; padding:16px; color:var(--muted);">
+                <div style="font-size:32px; margin-bottom:6px;">📱</div>
                 <b>No screenshot captured yet</b>
-                <p style="font-size:13px; margin:6px 0 12px;">Click "Capture Now" or connect via ADB / Companion web to inspect your phone screen.</p>
+                <p style="font-size:12.5px; margin:4px 0 10px;">Click "Capture Now" or connect via ADB / Companion web to view phone display.</p>
                 <button class="primary mini" id="btnRequestScreenFromPhone" type="button">Take Screen Capture</button>
+              </div>
+            </div>
+
+            <!-- Unlock PIN Form -->
+            <div style="margin-top:12px; padding-top:10px; border-top:1px solid var(--line-soft);">
+              <span class="muted" style="font-size:13px;">🔓 Unlock Phone Screen (کردنەوەی قفڵی شاشەی مۆبایل):</span>
+              <form class="inline-form" id="phoneUnlockForm" style="margin-top:6px;">
+                <input id="phoneUnlockPin" type="password" placeholder="PIN or passcode (e.g. 1234)" autocomplete="off" />
+                <button class="primary" type="submit">Unlock Phone</button>
+              </form>
+            </div>
+
+            <!-- Quick Navigation Keys -->
+            <div style="margin-top:10px;">
+              <span class="muted" style="font-size:12.5px; display:block; margin-bottom:6px;">Quick Phone Navigation:</span>
+              <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:6px;">
+                <button class="ghost mini" id="btnPhoneKeyWake" data-key="wake" type="button">⏻ Wake Screen</button>
+                <button class="ghost mini" id="btnPhoneKeySwipe" data-key="swipe_up" type="button">⬆️ Swipe Up</button>
+                <button class="ghost mini" id="btnPhoneKeyHome" data-key="home" type="button">🏠 Home</button>
+                <button class="ghost mini" id="btnPhoneKeyBack" data-key="back" type="button">◀️ Back</button>
+                <button class="ghost mini" id="btnPhoneKeyApps" data-key="menu" type="button">📑 Apps</button>
+                <button class="ghost mini" id="btnPhoneKeyPower" data-key="power" type="button">🔒 Lock</button>
+                <button class="ghost mini" id="btnPhoneKeyVolUp" data-key="volup" type="button">🔊 Vol +</button>
+                <button class="ghost mini" id="btnPhoneKeyVolDown" data-key="voldown" type="button">🔉 Vol -</button>
               </div>
             </div>
           </section>
 
-          <!-- Card 4: Hardware Remote Actions & Voice Broadcast -->
+          <!-- Card 2B: Physical Hardware & Audio Broadcast -->
           <section class="panel">
             <h3>⚡ Phone Hardware Remote Actions</h3>
-            <p class="muted">Trigger physical features on your connected phone:</p>
-            <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px; margin:10px 0 16px;">
+            <p class="muted">Trigger physical features on your connected phone directly from this PC:</p>
+            
+            <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px; margin:8px 0 14px;">
               <button class="primary" id="btnCtrlPhoneTorch" type="button">🔦 Flashlight (Off)</button>
               <button class="ghost" id="btnCtrlPhoneVibrate" type="button">📳 Vibrate Phone</button>
               <button class="ghost" id="btnCtrlPhoneRing" type="button">🚨 Ring Phone Alarm</button>
               <button class="ghost" id="btnCtrlPhonePhoto" type="button">📷 Request Camera Photo</button>
             </div>
 
-            <h4 style="margin:16px 0 8px; font-size:14.5px; color:var(--cyan);">📢 Speak Aloud on Phone (TTS)</h4>
+            <h4 style="margin:14px 0 6px; font-size:14px; color:var(--cyan);">📢 Speak Aloud on Phone (TTS / دەنگدانەوە لە مۆبایل)</h4>
+            <p class="muted" style="font-size:12.5px; margin-bottom:6px;">Type text in English or Kurdish to broadcast through phone speakers:</p>
             <form class="inline-form" id="phoneCtrlSpeakForm">
               <input id="phoneCtrlSpeakInput" type="text" placeholder="Type text to speak through phone speakers..." />
               <button class="primary" type="submit">Broadcast Voice</button>
             </form>
 
-            <h4 style="margin:16px 0 8px; font-size:14.5px; color:var(--cyan);">📋 Clipboard & Push Alert</h4>
+            <h4 style="margin:16px 0 6px; font-size:14px; color:var(--cyan);">📋 Instant Sync & Push Notification</h4>
             <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px;">
               <button class="ghost" id="btnCtrlSendClipboard" type="button">📋 Send PC Clipboard to Phone</button>
-              <button class="ghost" id="btnCtrlSendAlert" type="button">🔔 Send Push Notification</button>
+              <button class="ghost" id="btnCtrlSendAlert" type="button">🔔 Send Push Notification Alert</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- ==================== STEP 3: PHONE CONTROLS LAPTOP ==================== -->
+        <div class="phone-step-divider">Step 3 // Control Laptop From Phone (هەنگاوی ٣: کۆنتڕۆڵی لاپتۆپ لە مۆبایلەوە)</div>
+        <div class="media-grid">
+          <!-- Card 3A: Phone Companion Features -->
+          <section class="panel">
+            <h3>🖱️ Features Inside Phone Companion</h3>
+            <p class="muted">Once you open the portal on your phone, you get full wireless command of this laptop:</p>
+            
+            <div style="display:flex; flex-direction:column; gap:10px; margin-top:8px;">
+              <div style="display:flex; gap:12px; align-items:flex-start; padding:10px; background:#04121a; border-radius:4px; border:1px solid var(--line-soft);">
+                <div style="font-size:24px;">🖱️</div>
+                <div>
+                  <b style="color:var(--cyan); font-size:13.5px;">Live Trackpad with Visible Mouse Cursor</b>
+                  <p style="margin:2px 0 0; font-size:12.5px; color:var(--muted);">Slide your finger on your phone screen to glide the laptop mouse pointer. A high-visibility cursor dot shows exactly where you're pointing!</p>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px; align-items:flex-start; padding:10px; background:#04121a; border-radius:4px; border:1px solid var(--line-soft);">
+                <div style="font-size:24px;">⌨️</div>
+                <div>
+                  <b style="color:var(--cyan); font-size:13.5px;">Wireless Keyboard & Text Typing</b>
+                  <p style="margin:2px 0 0; font-size:12.5px; color:var(--muted);">Send text, commands, or hotkeys directly into whatever window is active on your laptop.</p>
+                </div>
+              </div>
+
+              <div style="display:flex; gap:12px; align-items:flex-start; padding:10px; background:#04121a; border-radius:4px; border:1px solid var(--line-soft);">
+                <div style="font-size:24px;">📺</div>
+                <div>
+                  <b style="color:var(--cyan); font-size:13.5px;">Continuous High-Speed Screen Stream</b>
+                  <p style="margin:2px 0 0; font-size:12.5px; color:var(--muted);">Watch your laptop monitor update smoothly in real time on your phone display.</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Card 3B: Wake-on-LAN (WoL) & Sleep Control -->
+          <section class="panel">
+            <h3>⚡ Wake-on-LAN (WoL) & Laptop Power</h3>
+            <p class="muted">Power on your laptop even when it's sleeping by tapping "Wake PC" on your phone:</p>
+            
+            <div id="wolInfoDisplay" style="padding:10px; border-radius:4px; background:#04121a; border:1px solid var(--line-soft); font-size:13px; font-family:var(--mono); margin:8px 0;">
+              Loading PC MAC address...
+            </div>
+            
+            <div class="row-btns" style="gap:8px; flex-wrap:wrap; margin-bottom:14px;">
+              <button class="ghost" id="btnTestWol" type="button">⚡ Test WoL Packet</button>
+              <button class="ghost danger" id="btnSleepPcDash" type="button">💤 Put Laptop to Sleep</button>
+              <button class="ghost" id="btnCopyMacDash" type="button">📋 Copy MAC</button>
+            </div>
+
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--line-soft); padding-top:12px;">
+              <h4 style="margin:0; font-size:13.5px; color:var(--cyan);">Discovered Wi-Fi Devices</h4>
+              <button class="ghost mini" id="btnRefreshDevices" type="button">🔄 Scan</button>
+            </div>
+            <div id="nearbyDevicesList" style="margin-top:8px;">
+              <p class="empty" style="font-size:13px;">Scanning local network...</p>
             </div>
           </section>
         </div>
@@ -507,7 +653,10 @@
           <small class="intro-sub" id="wakeSubtitle">BOOT SEQUENCE // NEURAL CORES ONLINE</small>
         </div>
       </div>
-      <button id="btnSkipWake" class="intro-skip-btn">✕ Skip Intro</button>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="btnIntroAudioToggle" class="intro-audio-toggle" type="button" title="Toggle Sound">🔊 Audio: Ready</button>
+        <button id="btnSkipWake" class="intro-skip-btn">✕ Skip Intro</button>
+      </div>
     </div>
 
     <!-- Center Stark Diagnostics & Audio Reactor -->
@@ -519,6 +668,7 @@
         <div class="reactor-core-glow"></div>
       </div>
       <h1 class="intro-welcome-text" id="wakeStatusText">"Welcome back, Sir. All systems initialized and online."</h1>
+      <button id="btnIntroUnmute" class="intro-unmute-btn hidden" type="button">🔊 CLICK TO ACTIVATE SOUND & VOICE / بۆ چالاککردنی دەنگ کلیک بکە</button>
       <div class="intro-telemetry-chips">
         <span>CPU: 100% CALIBRATED</span>
         <span>RAM: SYNCHRONIZED</span>

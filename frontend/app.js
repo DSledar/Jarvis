@@ -251,6 +251,41 @@ function isCamPhrase(raw) {
 /* ------------------------------------------------------------------ Wake / Sleep sequence handlers */
 let introTimer = null;
 let introProgressInterval = null;
+let audioActivated = false;
+
+function activateIntroAudio() {
+  if (audioActivated) return;
+  audioActivated = true;
+
+  try {
+    const ctx = getAudioContext();
+    if (ctx && ctx.state === 'suspended') {
+      ctx.resume().catch(() => {});
+    }
+  } catch {}
+
+  const localVideo = $('#wakeLocalVideo');
+  if (localVideo) {
+    try {
+      localVideo.muted = false;
+      localVideo.volume = 1.0;
+    } catch {}
+  }
+
+  playWakeChime();
+  speak('Welcome back, Sir. All systems are initialized and online.');
+
+  const unmuteBtn = $('#btnIntroUnmute');
+  if (unmuteBtn) {
+    unmuteBtn.style.opacity = '0';
+    setTimeout(() => unmuteBtn.classList.add('hidden'), 250);
+  }
+  const audioToggle = $('#btnIntroAudioToggle');
+  if (audioToggle) {
+    audioToggle.textContent = '🔊 Audio: Active';
+    audioToggle.classList.remove('muted');
+  }
+}
 
 function triggerWakeUpSequence(opts = true) {
   const options = (typeof opts === 'boolean') ? { playVideo: opts, isStartup: false } : (opts || {});
@@ -263,7 +298,6 @@ function triggerWakeUpSequence(opts = true) {
   state.speakReplies = true;
   syncSpeakBtn();
   refreshUI();
-  playWakeChime();
 
   const overlay = $('#wakeUpOverlay');
   const localVideo = $('#wakeLocalVideo');
@@ -273,6 +307,8 @@ function triggerWakeUpSequence(opts = true) {
   const subtitle = $('#wakeSubtitle');
   const progressBar = $('#introProgressBar');
   const progressLabel = $('#introProgressLabel');
+  const unmuteBtn = $('#btnIntroUnmute');
+  const audioToggle = $('#btnIntroAudioToggle');
 
   if (introTimer) { clearTimeout(introTimer); introTimer = null; }
   if (introProgressInterval) { clearInterval(introProgressInterval); introProgressInterval = null; }
@@ -299,20 +335,32 @@ function triggerWakeUpSequence(opts = true) {
       localVideo.style.display = 'block';
       if (iframeWrapper) iframeWrapper.classList.add('hidden');
       localVideo.currentTime = 0;
-      localVideo.muted = true; // start muted for compliance
 
       // When the intro video finishes, automatically enter Command Center!
       localVideo.onended = () => {
         dismissWakeOverlay();
       };
 
+      // Try playing unmuted first
+      localVideo.muted = false;
+      localVideo.volume = 1.0;
+
       const playPromise = localVideo.play();
       if (playPromise !== undefined) {
         playPromise
           .then(() => {
-            try { localVideo.muted = false; } catch {}
+            // Autoplay with sound succeeded
+            audioActivated = true;
+            if (unmuteBtn) unmuteBtn.classList.add('hidden');
+            if (audioToggle) {
+              audioToggle.textContent = '🔊 Audio: Active';
+              audioToggle.classList.remove('muted');
+            }
+            playWakeChime();
+            speak('Welcome back, Sir. All systems are initialized and online.');
           })
           .catch(() => {
+            // Autoplay with sound was blocked by browser policy: play muted and prompt user
             localVideo.muted = true;
             localVideo.play().catch(() => {
               if (iframeWrapper && iframe) {
@@ -321,6 +369,16 @@ function triggerWakeUpSequence(opts = true) {
                 iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
               }
             });
+
+            // Reveal prominent pulsing unmute button
+            if (unmuteBtn) {
+              unmuteBtn.classList.remove('hidden');
+              unmuteBtn.style.opacity = '1';
+            }
+            if (audioToggle) {
+              audioToggle.textContent = '🔇 Click to Unmute';
+              audioToggle.classList.add('muted');
+            }
           });
       }
     }
@@ -362,21 +420,27 @@ function triggerWakeUpSequence(opts = true) {
       }, 100);
     }
 
-    // Safety timeout: automatically enter Command Center after 6.5 seconds max
+    // Safety timeout: automatically enter Command Center after 7.5 seconds max
     introTimer = setTimeout(() => {
       dismissWakeOverlay();
-    }, 6500);
+    }, 7500);
   }
 
   logActivity('JARVIS systems online (' + (isStartup ? 'Startup intro' : 'Wake-up sequence') + ' initiated)', true);
   toast('Welcome back, Sir. JARVIS is awake!');
-  speak('Welcome back, Sir. All systems are initialized and online.');
+  if (audioActivated) {
+    speak('Welcome back, Sir. All systems are initialized and online.');
+  }
   startBackgroundVoiceListener();
 }
 
 function dismissWakeOverlay() {
   if (introTimer) { clearTimeout(introTimer); introTimer = null; }
   if (introProgressInterval) { clearInterval(introProgressInterval); introProgressInterval = null; }
+
+  if (!audioActivated) {
+    activateIntroAudio();
+  }
 
   const overlay = $('#wakeUpOverlay');
   const localVideo = $('#wakeLocalVideo');
@@ -628,8 +692,8 @@ const loaders = {
   agents: () => loadTools(),
   memory: () => loadFacts(),
   history: () => loadHistorySessions(),
-  'phone-control': () => loadPhoneControl(),
-  devices: () => { loadDevices(); refreshTunnelStatus(); loadWolInfo(); },
+  'phone-control': () => { loadPhoneControl(); refreshTunnelStatus(); loadWolInfo(); loadDevices(); },
+  devices: () => { loadPhoneControl(); refreshTunnelStatus(); loadWolInfo(); loadDevices(); },
   security: () => renderPending()
 };
 function showView(name) {
@@ -955,6 +1019,21 @@ $('#sendNotifyPhoneBtn')?.addEventListener('click', async () => {
 
 /* ------------------------------------------------------------------ Dedicated Phone Control & Open Phone */
 let phoneScreenRefreshTimer = null;
+let currentPhoneQrMode = 'local';
+let cachedLocalPortalUrl = '';
+
+function updatePhoneQrDisplay(overrideUrl) {
+  if (overrideUrl) cachedLocalPortalUrl = overrideUrl;
+  const qrImg = $('#phoneConnectQr');
+  if (!qrImg) return;
+  const targetUrl = (currentPhoneQrMode === 'tunnel' && window.remoteTunnelUrl)
+    ? window.remoteTunnelUrl
+    : (cachedLocalPortalUrl || $('#phoneCtrlPortalLink')?.href || (window.location.origin + '/phone'));
+  
+  if (targetUrl && targetUrl !== '#') {
+    qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(targetUrl);
+  }
+}
 
 async function loadPhoneControl() {
   try {
@@ -1010,12 +1089,14 @@ async function loadPhoneControl() {
       }
     }
 
-    // Companion Link
+    // Companion Link & Dynamic QR Code
     const linkEl = $('#phoneCtrlPortalLink');
     if (linkEl && data.portal_url) {
       linkEl.href = data.portal_url;
       linkEl.textContent = data.portal_url;
+      cachedLocalPortalUrl = data.portal_url;
     }
+    updatePhoneQrDisplay(data.portal_url);
 
     // Torch button state
     const torchBtn = $('#btnCtrlPhoneTorch');
@@ -1047,6 +1128,48 @@ async function loadPhoneControl() {
 $('#btnRefreshPhoneCtrl')?.addEventListener('click', () => {
   loadPhoneControl();
   toast('Refreshed phone status.');
+});
+
+$('#btnQrModeLocal')?.addEventListener('click', () => {
+  currentPhoneQrMode = 'local';
+  $('#btnQrModeLocal')?.classList.add('primary');
+  $('#btnQrModeLocal')?.classList.remove('ghost');
+  $('#btnQrModeTunnel')?.classList.add('ghost');
+  $('#btnQrModeTunnel')?.classList.remove('primary');
+  updatePhoneQrDisplay();
+});
+
+$('#btnQrModeTunnel')?.addEventListener('click', () => {
+  if (!window.remoteTunnelUrl) {
+    toast('Remote tunnel is offline. Click "Start Remote Tunnel" below first!', true);
+    return;
+  }
+  currentPhoneQrMode = 'tunnel';
+  $('#btnQrModeTunnel')?.classList.add('primary');
+  $('#btnQrModeTunnel')?.classList.remove('ghost');
+  $('#btnQrModeLocal')?.classList.add('ghost');
+  $('#btnQrModeLocal')?.classList.remove('primary');
+  updatePhoneQrDisplay();
+});
+
+$('#btnCopyCtrlPortalLink')?.addEventListener('click', () => {
+  const link = $('#phoneCtrlPortalLink')?.href;
+  if (link) {
+    navigator.clipboard?.writeText(link);
+    toast('Copied phone portal URL to clipboard!');
+  }
+});
+
+// Step navigation pills click
+$$('.phone-step-pill').forEach((pill, idx) => {
+  pill.addEventListener('click', () => {
+    $$('.phone-step-pill').forEach((p) => p.classList.remove('active'));
+    pill.classList.add('active');
+    const dividers = $$('.phone-step-divider');
+    if (dividers[idx]) {
+      dividers[idx].scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
 });
 
 $('#btnQuickWakePhone')?.addEventListener('click', async () => {
@@ -1375,10 +1498,13 @@ async function refreshTunnelStatus() {
         const fullUrl = data.url.replace(/\/+$/, '') + '/phone';
         link.href = fullUrl;
         link.textContent = fullUrl;
+        window.remoteTunnelUrl = fullUrl;
       } else {
         link.href = '#';
         link.textContent = 'Tunnel not started';
+        window.remoteTunnelUrl = '';
       }
+      if (typeof updatePhoneQrDisplay === 'function') updatePhoneQrDisplay();
     }
     if (btn) {
       btn.textContent = data.active ? 'Stop Remote Tunnel' : 'Start Remote Tunnel';
@@ -1647,6 +1773,26 @@ $('#btnWakeEnter')?.addEventListener('click', dismissWakeOverlay);
 $('#btnWakeReplay')?.addEventListener('click', () => {
   triggerWakeUpSequence({ isStartup: false, playVideo: true });
 });
+$('#btnIntroUnmute')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  activateIntroAudio();
+});
+$('#btnIntroAudioToggle')?.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const vid = $('#wakeLocalVideo');
+  if (vid) {
+    if (vid.muted) {
+      activateIntroAudio();
+    } else {
+      vid.muted = true;
+      const toggle = $('#btnIntroAudioToggle');
+      if (toggle) {
+        toggle.textContent = '🔇 Audio: Muted';
+        toggle.classList.add('muted');
+      }
+    }
+  }
+});
 
 $('#btnCamSnapshot')?.addEventListener('click', () => {
   sendCamQuery('Analyze what you see in the camera right now in detail.');
@@ -1910,13 +2056,15 @@ refreshTunnelStatus();
 // Automatically play fullscreen holographic Stark HUD intro on program start
 triggerWakeUpSequence({ isStartup: true, playVideo: true });
 
-// Unlock audio policy and background listener on first pointer gesture
-window.addEventListener('pointerdown', () => {
-  const vid = $('#wakeLocalVideo');
-  if (vid && vid.muted) {
-    try { vid.muted = false; } catch {}
+// Unlock audio policy and background listener on first pointer gesture, touch, or keypress
+const unlockAudioOnGesture = () => {
+  if (!audioActivated) {
+    activateIntroAudio();
   }
   if (state.wakeWordEnabled && !state.rec && !state.busy) {
     startBackgroundVoiceListener();
   }
-}, { once: true });
+};
+window.addEventListener('pointerdown', unlockAudioOnGesture, { once: true });
+window.addEventListener('keydown', unlockAudioOnGesture, { once: true });
+window.addEventListener('touchstart', unlockAudioOnGesture, { once: true });
