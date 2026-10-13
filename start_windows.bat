@@ -32,7 +32,20 @@ if errorlevel 1 (
 echo Starting JARVIS at http://127.0.0.1:8000 and local network ...
 start "JARVIS Server" /D "%~dp0" cmd /k ".venv\Scripts\python.exe -m uvicorn backend.main:app --host 0.0.0.0 --port 8000"
 timeout /t 3 >nul
-start "JARVIS Browser" "http://127.0.0.1:8000/"
+
+rem ---- Spoken startup greeting via Windows Speech API
+start /b powershell -NoProfile -ExecutionPolicy Bypass -Command "Add-Type -AssemblyName System.Speech; (New-Object System.Speech.Synthesis.SpeechSynthesizer).Speak('J.A.R.V.I.S. online. All systems initialized.');" >nul 2>&1
+
+rem ---- Launch browser with unmuted autoplay policy
+set BROWSER_CMD=
+where msedge >nul 2>nul && set BROWSER_CMD=msedge --autoplay-policy=no-user-gesture-required
+if not defined BROWSER_CMD where chrome >nul 2>nul && set BROWSER_CMD=chrome --autoplay-policy=no-user-gesture-required
+
+if defined BROWSER_CMD (
+  start "" %BROWSER_CMD% "http://127.0.0.1:8000/"
+) else (
+  start "JARVIS Browser" "http://127.0.0.1:8000/"
+)
 endlocal
 exit /b 0
 

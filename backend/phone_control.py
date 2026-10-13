@@ -51,13 +51,14 @@ def find_adb() -> str | None:
     local_app_data = os.getenv("LOCALAPPDATA", "")
     user_home = Path.home()
     common_spots = [
+        ROOT / "tools" / "platform-tools" / "adb.exe",
+        ROOT / "tools" / "adb.exe",
         Path(local_app_data) / "Android" / "Sdk" / "platform-tools" / "adb.exe",
         user_home / "AppData" / "Local" / "Android" / "Sdk" / "platform-tools" / "adb.exe",
         Path("C:/Program Files/platform-tools/adb.exe"),
         Path("C:/platform-tools/adb.exe"),
         Path("C:/adb/adb.exe"),
         user_home / "platform-tools" / "adb.exe",
-        ROOT / "tools" / "adb.exe",
     ]
     for p in common_spots:
         if p.is_file():
@@ -65,6 +66,40 @@ def find_adb() -> str | None:
             return _ADB_PATH
 
     return None
+
+
+def download_adb() -> dict[str, Any]:
+    """Downloads official Google Android platform-tools (adb.exe) into tools/platform-tools."""
+    import zipfile
+    import urllib.request
+
+    tools_dir = ROOT / "tools"
+    tools_dir.mkdir(parents=True, exist_ok=True)
+    exe_name = "adb.exe" if platform.system().lower() == "windows" else "adb"
+    target_adb = tools_dir / "platform-tools" / exe_name
+    if target_adb.is_file():
+        global _ADB_PATH
+        _ADB_PATH = str(target_adb)
+        return {"ok": True, "path": str(target_adb), "message": "ADB is already installed."}
+
+    url = "https://dl.google.com/android/repository/platform-tools-latest-windows.zip"
+    zip_path = tools_dir / "platform-tools.zip"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "JARVIS-Agent/5.0"})
+        with urllib.request.urlopen(req, timeout=30) as resp, open(zip_path, "wb") as out_f:
+            out_f.write(resp.read())
+        with zipfile.ZipFile(zip_path, "r") as zip_ref:
+            zip_ref.extractall(tools_dir)
+        try:
+            zip_path.unlink()
+        except Exception:
+            pass
+        if target_adb.is_file():
+            _ADB_PATH = str(target_adb)
+            return {"ok": True, "path": str(target_adb), "message": "Android ADB successfully downloaded and installed!"}
+        return {"ok": False, "error": "Extracted archive but adb executable was not found."}
+    except Exception as exc:
+        return {"ok": False, "error": f"Failed to download ADB: {exc}"}
 
 
 def get_adb_devices() -> list[dict[str, str]]:
@@ -118,8 +153,21 @@ def unlock_phone(pin: str = "", device_serial: str = "") -> dict[str, Any]:
         except Exception as exc:
             return {"ok": False, "method": "adb", "error": str(exc)}
 
-    # A web page cannot dismiss Android's secure lock screen or inject the device PIN.
-    return {"ok": False, "method": "companion_web", "error": "Android lock-screen control requires ADB. Connect by USB debugging or pair Wireless debugging in the Phone Control panel; the browser companion cannot unlock the operating system."}
+    from . import devices
+    connected_web = devices.get_connected_phones()
+    if connected_web:
+        devices.queue_phone_event("wake", {"timestamp": time.time(), "message": "Wake request from JARVIS."})
+        return {
+            "ok": True,
+            "method": "companion_web",
+            "message": "Sent wake signal to connected phone companion. (Tip: For full PIN unlock & lockscreen bypass, plug phone into laptop with USB cable and click 'Detect Connected Phone')."
+        }
+
+    return {
+        "ok": False,
+        "method": "none",
+        "error": "No phone connected. Connect your phone using a USB cable (with USB Debugging enabled) or open the Web Companion link on your phone."
+    }
 
 
 def send_phone_key(key: str, device_serial: str = "") -> dict[str, Any]:
@@ -160,8 +208,23 @@ def send_phone_key(key: str, device_serial: str = "") -> dict[str, Any]:
         except Exception as exc:
             return {"ok": False, "error": str(exc)}
 
-    # A mobile browser cannot send Android system keyevents; only ADB can do that.
-    return {"ok": False, "method": "companion_web", "error": "Android system buttons need ADB. Connect by USB debugging or use the Wireless debugging pairing controls in JARVIS. The browser companion only supports web-page features such as flashlight requests, vibration, and speech."}
+    from . import devices
+    connected_web = devices.get_connected_phones()
+    if connected_web:
+        if key in ("wake", "power"):
+            devices.queue_phone_event("wake", {"timestamp": time.time(), "message": "Wake request from JARVIS."})
+            return {"ok": True, "method": "companion_web", "message": "Dispatched screen wake signal to phone companion."}
+        return {
+            "ok": False,
+            "method": "companion_web",
+            "error": f"Native button '{key}' requires USB cable connection. Plug phone into laptop with USB cable and enable USB Debugging."
+        }
+
+    return {
+        "ok": False,
+        "method": "none",
+        "error": "No phone connected. Connect via USB cable (with USB debugging enabled) or open the Web Companion on your phone."
+    }
 
 
 def request_phone_screenshot() -> dict[str, Any]:

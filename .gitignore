@@ -8,3 +8,4 @@ data/remote_settings.json
 data/screen_captures/
 .DS_Store
 *.exe
+tools/

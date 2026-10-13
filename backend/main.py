@@ -720,10 +720,25 @@ def _adb_run(args: list[str], timeout: int = 18) -> dict[str, Any]:
 @app.get("/api/phone/adb/status")
 async def phone_adb_status(request: Request) -> dict[str, Any]:
     _require_local_dashboard(request)
-    adb_path=await asyncio.to_thread(phone_control.find_adb)
-    adb_devs=await asyncio.to_thread(phone_control.get_adb_devices)
-    return {"ok":True,"adb_installed":bool(adb_path),"adb_devices":adb_devs,
-            "message":"Android system control is connected." if adb_devs else ("ADB is ready; connect by USB or Wireless debugging." if adb_path else "Install Android SDK Platform-Tools, then restart JARVIS.")}
+    adb_path = await asyncio.to_thread(phone_control.find_adb)
+    adb_devs = await asyncio.to_thread(phone_control.get_adb_devices)
+    return {
+        "ok": True,
+        "adb_installed": bool(adb_path),
+        "adb_path": adb_path or "",
+        "adb_devices": adb_devs,
+        "message": (
+            f"Phone connected ({adb_devs[0]['serial']}). Ready for control."
+            if adb_devs
+            else ("ADB is ready. Connect your phone via USB cable and tap 'Allow'." if adb_path else "Click 'Download ADB Tool' for 1-click Android setup.")
+        ),
+    }
+
+
+@app.post("/api/phone/adb/install")
+async def phone_adb_install(request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    return await asyncio.to_thread(phone_control.download_adb)
 
 
 @app.post("/api/phone/adb/pair")

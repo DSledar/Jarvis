@@ -448,7 +448,8 @@ function dismissWakeOverlay() {
   }
   $('#chatInput')?.focus();
 
-  // Voice greeting upon entering the Command Center
+  // Chime and voice greeting upon entering the Command Center
+  playWakeChime();
   if (state.speakReplies) {
     setTimeout(() => {
       speak('Welcome back, Sir. All systems are initialized and online.');
@@ -1111,12 +1112,63 @@ async function refreshAdbStatus() {
   try {
     const data = await api('/api/phone/adb/status');
     const connected = data.adb_devices || [];
+    const adbBadge = $('#phoneAdbBadge');
+    if (adbBadge) {
+      adbBadge.textContent = connected.length > 0 ? `● USB Connected (${connected[0].serial})` : '● Disconnected';
+      adbBadge.className = `tunnel-status-badge ${connected.length > 0 ? 'running' : 'stopped'}`;
+    }
     if ($('#phoneAdbStatus')) $('#phoneAdbStatus').textContent = connected.length
-      ? `✓ ADB connected (${connected[0].serial})`
-      : (data.adb_installed ? 'ADB installed · no phone connected' : 'ADB not found · install Platform-Tools');
+      ? `✓ Connected (${connected[0].serial})`
+      : (data.adb_installed ? 'ADB tool ready · no phone connected' : 'ADB not found · click Download');
     if (statusEl) statusEl.textContent = data.message || (connected.length ? 'Phone connected.' : 'No phone connected yet.');
   } catch (err) { if (statusEl) statusEl.textContent = `ADB status error: ${err.message}`; }
 }
+
+$('#btnDetectUsbPhone')?.addEventListener('click', async () => {
+  const statusEl = $('#adbPairStatus');
+  if (statusEl) { statusEl.textContent = 'Scanning USB ports for connected Android phone…'; statusEl.dataset.userMessage = '1'; }
+  toast('Scanning USB ports for connected phone...');
+  try {
+    const data = await api('/api/phone/adb/status');
+    const devs = data.adb_devices || [];
+    if (devs.length > 0) {
+      toast(`Phone detected! (${devs[0].serial})`);
+      if (statusEl) statusEl.textContent = `✓ Phone connected: ${devs[0].serial}. System controls active!`;
+    } else if (data.adb_installed) {
+      toast('No phone detected. Please connect USB cable and enable USB Debugging.', true);
+      if (statusEl) statusEl.textContent = 'No phone detected. Connect USB cable and ensure "USB Debugging" is enabled on your phone.';
+    } else {
+      toast('ADB tool not found. Click "Download ADB Tool (1-Click)" below.', true);
+      if (statusEl) statusEl.textContent = 'ADB tool not found. Please click "Download ADB Tool (1-Click)".';
+    }
+    await loadPhoneControl();
+  } catch (err) {
+    toast(`Scan error: ${err.message}`, true);
+  }
+});
+
+$('#btnInstallAdbTool')?.addEventListener('click', async () => {
+  const statusEl = $('#adbPairStatus');
+  const btn = $('#btnInstallAdbTool');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Downloading ADB...'; }
+  if (statusEl) { statusEl.textContent = 'Downloading official Google ADB Platform-Tools (~5MB)...'; statusEl.dataset.userMessage = '1'; }
+  toast('Downloading Android ADB tools from Google...');
+  try {
+    const data = await api('/api/phone/adb/install');
+    if (data.ok) {
+      toast(data.message || 'ADB installed successfully!');
+      if (statusEl) statusEl.textContent = '✓ ADB installed! Connect phone with USB cable and click "Detect Connected Phone".';
+      if (btn) btn.textContent = '✓ ADB Installed';
+    } else {
+      throw new Error(data.error || 'Download failed');
+    }
+    setTimeout(refreshAdbStatus, 600);
+  } catch (err) {
+    toast(`ADB install error: ${err.message}`, true);
+    if (statusEl) statusEl.textContent = `Download failed: ${err.message}`;
+    if (btn) { btn.disabled = false; btn.textContent = '📥 Download ADB Tool (1-Click)'; }
+  }
+});
 
 $('#btnAdbPair')?.addEventListener('click', async () => {
   const statusEl = $('#adbPairStatus');

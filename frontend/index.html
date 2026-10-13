@@ -353,30 +353,47 @@
             </div>
           </section>
 
-          <!-- Card: Android Debug Bridge setup for actual OS-level phone control -->
+          <!-- Card: Android Debug Bridge (ADB) Phone Connection -->
           <section class="panel">
-            <h3>🔗 Enable Android system control (ADB)</h3>
-            <p class="muted">Home, Back, Power, swipe and lock-screen control need Android Debug Bridge. The browser link alone cannot control other Android apps.</p>
-            <label for="adbHost" class="muted">Phone Wi-Fi IP address</label>
-            <input id="adbHost" type="text" inputmode="decimal" placeholder="192.168.1.45" autocomplete="off" style="width:100%; margin:6px 0 10px;" />
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
-              <label class="muted" for="adbPairPort">Pairing port
-                <input id="adbPairPort" type="number" min="1" max="65535" placeholder="Shown on Pair device" autocomplete="off" style="width:100%; margin-top:5px;" />
-              </label>
-              <label class="muted" for="adbConnectPort">Debugging port
-                <input id="adbConnectPort" type="number" min="1" max="65535" placeholder="Shown on Wireless debugging" autocomplete="off" style="width:100%; margin-top:5px;" />
-              </label>
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">🔌 Connect Android via USB (Recommended)</h3>
+              <span id="phoneAdbBadge" class="tunnel-status-badge stopped">● Disconnected</span>
             </div>
-            <label class="muted" for="adbPairCode" style="display:block; margin-top:10px;">Temporary pairing code</label>
-            <input id="adbPairCode" type="password" inputmode="numeric" placeholder="Enter the code shown on your phone" autocomplete="off" style="width:100%; margin:6px 0 10px;" />
-            <div style="display:flex; flex-wrap:wrap; gap:8px;">
-              <button class="primary" id="btnAdbPair" type="button">Pair over Wi-Fi</button>
-              <button class="ghost" id="btnAdbConnect" type="button">Connect</button>
-              <button class="ghost" id="btnAdbRefresh" type="button">Refresh status</button>
+            <p class="muted" style="margin-top:6px;">Plug your phone into this laptop using your USB charging cable for full hardware control:</p>
+            
+            <div style="background:#04121a; border:1px solid var(--line-soft); border-radius:4px; padding:10px 12px; margin:10px 0; display:flex; flex-direction:column; gap:6px; font-size:14px;">
+              <div><b>Step 1:</b> Plug phone into laptop with USB cable.</div>
+              <div><b>Step 2:</b> Enable <b>USB Debugging</b> in Developer Options.</div>
+              <div><b>Step 3:</b> Tap <b>"Always allow"</b> on your phone screen.</div>
             </div>
-            <p id="adbPairStatus" class="muted" role="status" aria-live="polite" style="margin-top:10px;">Checking Android Debug Bridge…</p>
-            <details style="margin-top:8px;"><summary>How to get the ports</summary>
-              <p class="muted">On Android: Settings → About phone → tap Build number 7 times → Developer options → Wireless debugging. Choose “Pair device with pairing code”; enter its IP, pairing port and code here. Then return to the main Wireless debugging screen and enter its current IP and connection port above. Keep both devices on the same Wi-Fi.</p>
+
+            <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
+              <button class="primary" id="btnDetectUsbPhone" type="button">⚡ Detect Connected Phone</button>
+              <button class="ghost" id="btnInstallAdbTool" type="button">📥 Download ADB Tool (1-Click)</button>
+              <button class="ghost" id="btnAdbRefresh" type="button">🔄 Refresh Status</button>
+            </div>
+            <p id="adbPairStatus" class="muted" role="status" aria-live="polite" style="margin-top:10px; font-size:13.5px;">Checking Android Debug Bridge…</p>
+
+            <details style="margin-top:10px;"><summary style="cursor:pointer; color:var(--cyan); font-weight:600;">📶 Wireless Wi-Fi Debugging (No Cable)</summary>
+              <div style="margin-top:10px;">
+                <p class="muted" style="font-size:13px;">If you prefer Wi-Fi instead of a USB cable, use Android 11+ Wireless Debugging:</p>
+                <label for="adbHost" class="muted" style="font-size:13px;">Phone Wi-Fi IP address</label>
+                <input id="adbHost" type="text" inputmode="decimal" placeholder="192.168.1.45" autocomplete="off" style="width:100%; margin:4px 0 8px;" />
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+                  <label class="muted" for="adbPairPort" style="font-size:13px;">Pairing port
+                    <input id="adbPairPort" type="number" min="1" max="65535" placeholder="Pairing port" autocomplete="off" style="width:100%; margin-top:4px;" />
+                  </label>
+                  <label class="muted" for="adbConnectPort" style="font-size:13px;">Debugging port
+                    <input id="adbConnectPort" type="number" min="1" max="65535" placeholder="Connect port" autocomplete="off" style="width:100%; margin-top:4px;" />
+                  </label>
+                </div>
+                <label class="muted" for="adbPairCode" style="display:block; margin-top:8px; font-size:13px;">Temporary pairing code</label>
+                <input id="adbPairCode" type="password" inputmode="numeric" placeholder="Enter code shown on phone" autocomplete="off" style="width:100%; margin:4px 0 8px;" />
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
+                  <button class="primary mini" id="btnAdbPair" type="button">Pair over Wi-Fi</button>
+                  <button class="ghost mini" id="btnAdbConnect" type="button">Connect</button>
+                </div>
+              </div>
             </details>
           </section>
 
