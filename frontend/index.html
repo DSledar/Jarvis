@@ -236,6 +236,83 @@
           </div>
         </div>
 
+        <!-- Visual 2-Mode Phone Control Guide -->
+        <div class="phone-guide-banner">
+          <div class="guide-header">
+            <div class="guide-title">
+              <span class="guide-badge">V5 QUICK GUIDE</span>
+              <h3>How Phone Control Works (2 Simple Ways)</h3>
+            </div>
+            <p class="guide-sub">JARVIS gives you two distinct modes depending on whether you want to control your PC from your phone or control your phone from your PC:</p>
+          </div>
+
+          <div class="guide-modes-grid">
+            <!-- MODE 1 -->
+            <div class="guide-mode-card mode-companion">
+              <div class="mode-header">
+                <span class="mode-tag tag-easy">MODE 1 • ZERO SETUP (RECOMMENDED)</span>
+                <h4>📱 Wireless Mobile Companion</h4>
+                <span class="mode-desc">Control your PC from your Phone • Any Phone (iPhone or Android)</span>
+              </div>
+              <div class="mode-steps">
+                <div class="step-item">
+                  <span class="step-num">1</span>
+                  <div>Connect your phone to the <b>same Wi-Fi</b> network as your laptop.</div>
+                </div>
+                <div class="step-item">
+                  <span class="step-num">2</span>
+                  <div>Open your phone browser (Safari or Chrome) and navigate to:<br>
+                    <a id="guideCompanionLink" href="/phone" target="_blank" class="guide-link">http://.../phone</a>
+                    <button id="btnCopyGuideLink" type="button" class="mini-copy-btn">Copy Link</button>
+                  </div>
+                </div>
+                <div class="step-item">
+                  <span class="step-num">3</span>
+                  <div>Type the security PIN shown on your laptop dashboard to connect instantly!</div>
+                </div>
+              </div>
+              <div class="mode-features">
+                <span class="feat-pill">🖥️ Live Laptop Screen</span>
+                <span class="feat-pill">🖱️ Visible Mouse Cursor & Touchpad</span>
+                <span class="feat-pill">💤 Put PC to Sleep (S0/S3)</span>
+                <span class="feat-pill">⚡ Wake PC via Wake-on-LAN</span>
+                <span class="feat-pill">🔦 Phone Flashlight & Vibrate</span>
+                <span class="feat-pill">💬 Voice & Chat from Phone</span>
+              </div>
+            </div>
+
+            <!-- MODE 2 -->
+            <div class="guide-mode-card mode-adb">
+              <div class="mode-header">
+                <span class="mode-tag tag-advanced">MODE 2 • DEEP SYSTEM CONTROL</span>
+                <h4>⚡ Android ADB Hardware Control</h4>
+                <span class="mode-desc">Control your Phone from your PC • Android Phones Only</span>
+              </div>
+              <div class="mode-steps">
+                <div class="step-item">
+                  <span class="step-num">1</span>
+                  <div>Plug your Android phone in via <b>USB cable</b> (or enable Wireless Debugging in Developer Options).</div>
+                </div>
+                <div class="step-item">
+                  <span class="step-num">2</span>
+                  <div>On your phone screen, tap <b>"Always allow USB debugging"</b> when prompted.</div>
+                </div>
+                <div class="step-item">
+                  <span class="step-num">3</span>
+                  <div>Use the cards below to enter your phone PIN, press Home/Back, and take phone screenshots!</div>
+                </div>
+              </div>
+              <div class="mode-features">
+                <span class="feat-pill">🔓 Unlock Phone Screen with PIN</span>
+                <span class="feat-pill">🏠 Remote Home / Back / Apps</span>
+                <span class="feat-pill">⏻ Wake & Lock Phone Hardware</span>
+                <span class="feat-pill">📸 View Phone Display Screen</span>
+                <span class="feat-pill">🔉 Hardware Volume Controls</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <div class="media-grid">
           <!-- Card 1: Connected Phone & Battery Status -->
           <section class="panel">
@@ -274,6 +351,33 @@
                 <button class="ghost mini" id="btnCopyCtrlPortalLink" type="button">Copy</button>
               </div>
             </div>
+          </section>
+
+          <!-- Card: Android Debug Bridge setup for actual OS-level phone control -->
+          <section class="panel">
+            <h3>🔗 Enable Android system control (ADB)</h3>
+            <p class="muted">Home, Back, Power, swipe and lock-screen control need Android Debug Bridge. The browser link alone cannot control other Android apps.</p>
+            <label for="adbHost" class="muted">Phone Wi-Fi IP address</label>
+            <input id="adbHost" type="text" inputmode="decimal" placeholder="192.168.1.45" autocomplete="off" style="width:100%; margin:6px 0 10px;" />
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
+              <label class="muted" for="adbPairPort">Pairing port
+                <input id="adbPairPort" type="number" min="1" max="65535" placeholder="Shown on Pair device" autocomplete="off" style="width:100%; margin-top:5px;" />
+              </label>
+              <label class="muted" for="adbConnectPort">Debugging port
+                <input id="adbConnectPort" type="number" min="1" max="65535" placeholder="Shown on Wireless debugging" autocomplete="off" style="width:100%; margin-top:5px;" />
+              </label>
+            </div>
+            <label class="muted" for="adbPairCode" style="display:block; margin-top:10px;">Temporary pairing code</label>
+            <input id="adbPairCode" type="password" inputmode="numeric" placeholder="Enter the code shown on your phone" autocomplete="off" style="width:100%; margin:6px 0 10px;" />
+            <div style="display:flex; flex-wrap:wrap; gap:8px;">
+              <button class="primary" id="btnAdbPair" type="button">Pair over Wi-Fi</button>
+              <button class="ghost" id="btnAdbConnect" type="button">Connect</button>
+              <button class="ghost" id="btnAdbRefresh" type="button">Refresh status</button>
+            </div>
+            <p id="adbPairStatus" class="muted" role="status" aria-live="polite" style="margin-top:10px;">Checking Android Debug Bridge…</p>
+            <details style="margin-top:8px;"><summary>How to get the ports</summary>
+              <p class="muted">On Android: Settings → About phone → tap Build number 7 times → Developer options → Wireless debugging. Choose “Pair device with pairing code”; enter its IP, pairing port and code here. Then return to the main Wireless debugging screen and enter its current IP and connection port above. Keep both devices on the same Wi-Fi.</p>
+            </details>
           </section>
 
           <!-- Card 2: Open & Unlock Phone -->
@@ -480,7 +584,7 @@
 <!-- Cinematic JARVIS Startup Intro & Wake Screen -->
 <div id="wakeUpOverlay" class="wake-overlay intro-cinematic-overlay hidden" role="dialog" aria-label="J.A.R.V.I.S Startup Intro">
   <!-- 100% Fullscreen native video (zero YouTube branding) -->
-  <video id="wakeLocalVideo" class="intro-video-element" autoplay playsinline muted>
+  <video id="wakeLocalVideo" class="intro-video-element" autoplay playsinline>
     <source src="/assets/jarvis_intro.mp4" type="video/mp4">
     <source src="/assets/jarvis_intro.webm" type="video/webm">
   </video>
@@ -507,11 +611,19 @@
           <small class="intro-sub" id="wakeSubtitle">BOOT SEQUENCE // NEURAL CORES ONLINE</small>
         </div>
       </div>
-      <button id="btnSkipWake" class="intro-skip-btn">✕ Skip Intro</button>
+      <div style="display:flex; align-items:center; gap:10px;">
+        <button id="btnToggleIntroAudio" class="intro-audio-btn" type="button" title="Toggle Soundtrack Audio">
+          <span id="introAudioIcon">🔊</span> <span id="introAudioText">Audio: ON</span>
+        </button>
+        <button id="btnSkipWake" class="intro-skip-btn">✕ Skip Intro</button>
+      </div>
     </div>
 
     <!-- Center Stark Diagnostics & Audio Reactor -->
     <div class="intro-center-stage">
+      <div id="introAudioPrompt" class="intro-audio-prompt hidden" role="button" tabindex="0">
+        🔊 AUDIO MUTED BY BROWSER — CLICK ANYWHERE TO UNMUTE JARVIS
+      </div>
       <div class="intro-center-reactor">
         <div class="reactor-ring ring-outer"></div>
         <div class="reactor-ring ring-middle"></div>

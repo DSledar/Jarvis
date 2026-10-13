@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import ipaddress
 import json
 import os
 import platform
@@ -32,7 +34,7 @@ else:
     import tools  # type: ignore
     from agent import STATE, diagnose, stream_jarvis, test_brain, warmup  # type: ignore
 
-app = FastAPI(title="JARVIS Free Agent", version="4.5.0")
+app = FastAPI(title="JARVIS Free Agent", version="5.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -492,45 +494,34 @@ async def devices_send(payload: dict) -> dict:
 # ----------------------------------------------------------------------------- Live Screen Streaming & Mobile Remote Control
 @app.get("/api/phone/screen")
 async def phone_screen_snapshot(token: str = "") -> Response:
-    from fastapi.responses import Response
-    if token and not devices.validate_token(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
-    data = await asyncio.to_thread(phone_control.capture_pc_screen_bytes, 1280, 65)
+    if not token or not devices.validate_token(token):
+        raise HTTPException(status_code=401, detail="Authenticate in the JARVIS phone companion first.")
+    data = await asyncio.to_thread(phone_control.capture_pc_screen_bytes, 960, 58)
     return Response(content=data, media_type="image/jpeg", headers={"Cache-Control": "no-store, must-revalidate"})
 
 
 @app.get("/api/phone/screen/stream")
 async def phone_screen_mjpeg_stream(token: str = "") -> StreamingResponse:
-    """Continuous low-latency MJPEG stream (~16 FPS) for real-time live desktop viewing."""
-    if token and not devices.validate_token(token):
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    """Low-latency MJPEG stream. Capture work is isolated from the async request loop."""
+    if not token or not devices.validate_token(token):
+        raise HTTPException(status_code=401, detail="Authenticate in the JARVIS phone companion first.")
 
     async def frame_generator():
         try:
             while True:
-                frame = await asyncio.to_thread(phone_control.capture_pc_screen_bytes, 1024, 55)
-                yield (
-                    b"--frame\r\n"
-                    b"Content-Type: image/jpeg\r\n"
-                    b"Content-Length: " + str(len(frame)).encode("ascii") + b"\r\n\r\n" +
-                    frame + b"\r\n"
-                )
-                await asyncio.sleep(0.06)
+                frame = await asyncio.to_thread(phone_control.capture_pc_screen_bytes, 960, 58)
+                yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n"
+                       b"Content-Length: " + str(len(frame)).encode("ascii") + b"\r\n\r\n" + frame + b"\r\n")
+                await asyncio.sleep(0.025)
         except asyncio.CancelledError:
             pass
         except Exception:
             pass
 
-    return StreamingResponse(
-        frame_generator(),
-        media_type="multipart/x-mixed-replace; boundary=frame",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "Connection": "keep-alive",
-        },
-    )
+    return StreamingResponse(frame_generator(), media_type="multipart/x-mixed-replace; boundary=frame", headers={
+        "Cache-Control": "no-cache, no-store, must-revalidate", "Pragma": "no-cache", "Expires": "0",
+        "Connection": "keep-alive", "X-Accel-Buffering": "no",
+    })
 
 
 @app.get("/api/phone/flashlight")
@@ -577,51 +568,38 @@ class PhoneMouseRequest(BaseModel):
     btn: str = "left"
 
 
-@app.post("/api/phone/mouse")
-async def phone_mouse(payload: PhoneMouseRequest) -> dict:
-    s = devices.validate_token(payload.token)
-    if not s:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def _perform_phone_mouse(payload: PhoneMouseRequest) -> dict[str, Any]:
     import pyautogui
     pyautogui.FAILSAFE = False
+    phone_control.wake_pc_display()
     act = payload.action.lower()
     try:
         if act == "move":
             pyautogui.moveRel(int(payload.dx), int(payload.dy), _pause=False)
         elif act == "move_to" and payload.x_pct is not None and payload.y_pct is not None:
-            sw, sh = pyautogui.size()
-            tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
-            ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
-            pyautogui.moveTo(tx, ty, _pause=False)
-        elif act == "click":
+            sw, sh = pyautogui.size(); tx=max(0,min(sw-1,int(payload.x_pct*sw))); ty=max(0,min(sh-1,int(payload.y_pct*sh)))
+            pyautogui.moveTo(tx,ty,_pause=False)
+        elif act in ("click", "right_click", "double_click"):
+            x = y = None
             if payload.x_pct is not None and payload.y_pct is not None:
-                sw, sh = pyautogui.size()
-                tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
-                ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
-                pyautogui.click(x=tx, y=ty, button=payload.btn or "left")
-            else:
-                pyautogui.click(button=payload.btn or "left")
-        elif act == "right_click":
-            if payload.x_pct is not None and payload.y_pct is not None:
-                sw, sh = pyautogui.size()
-                tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
-                ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
-                pyautogui.rightClick(x=tx, y=ty)
-            else:
-                pyautogui.rightClick()
-        elif act == "double_click":
-            if payload.x_pct is not None and payload.y_pct is not None:
-                sw, sh = pyautogui.size()
-                tx = max(0, min(sw - 1, int(payload.x_pct * sw)))
-                ty = max(0, min(sh - 1, int(payload.y_pct * sh)))
-                pyautogui.doubleClick(x=tx, y=ty)
-            else:
-                pyautogui.doubleClick()
+                sw, sh = pyautogui.size(); x=max(0,min(sw-1,int(payload.x_pct*sw))); y=max(0,min(sh-1,int(payload.y_pct*sh)))
+            if act == "click": pyautogui.click(x=x, y=y, button=payload.btn or "left")
+            elif act == "right_click": pyautogui.rightClick(x=x, y=y)
+            else: pyautogui.doubleClick(x=x, y=y)
         elif act == "scroll":
             pyautogui.scroll(int(payload.dy))
+        else:
+            return {"ok": False, "error": f"Unsupported mouse action: {act}"}
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
+
+
+@app.post("/api/phone/mouse")
+async def phone_mouse(payload: PhoneMouseRequest) -> dict:
+    if not devices.validate_token(payload.token):
+        raise HTTPException(status_code=401, detail="Phone session expired. Reconnect from the phone companion.")
+    return await asyncio.to_thread(_perform_phone_mouse, payload)
 
 
 class PhoneKeyboardRequest(BaseModel):
@@ -630,28 +608,29 @@ class PhoneKeyboardRequest(BaseModel):
     text: str = ""
 
 
-@app.post("/api/phone/keyboard")
-async def phone_keyboard(payload: PhoneKeyboardRequest) -> dict:
-    s = devices.validate_token(payload.token)
-    if not s:
-        raise HTTPException(status_code=401, detail="Unauthorized")
+def _perform_phone_keyboard(payload: PhoneKeyboardRequest) -> dict[str, Any]:
     import pyautogui
+    phone_control.wake_pc_display()
     try:
-        if payload.text:
-            pyautogui.write(payload.text)
+        if payload.text: pyautogui.write(payload.text, interval=0)
         elif payload.key:
-            k = payload.key.lower()
-            if "+" in k:
-                pyautogui.hotkey(*[part.strip() for part in k.split("+")])
-            else:
-                pyautogui.press(k)
+            k=payload.key.lower()
+            pyautogui.hotkey(*[part.strip() for part in k.split("+")]) if "+" in k else pyautogui.press(k)
         return {"ok": True}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
 
 
+@app.post("/api/phone/keyboard")
+async def phone_keyboard(payload: PhoneKeyboardRequest) -> dict:
+    if not devices.validate_token(payload.token):
+        raise HTTPException(status_code=401, detail="Phone session expired. Reconnect from the phone companion.")
+    return await asyncio.to_thread(_perform_phone_keyboard, payload)
+
+
 @app.post("/api/phone/unlock")
-async def phone_unlock_api(payload: dict) -> dict:
+async def phone_unlock_api(payload: dict, request: Request) -> dict:
+    _require_local_dashboard(request)
     tok = str(payload.get("token", ""))
     if tok and not devices.validate_token(tok):
         raise HTTPException(status_code=401, detail="Unauthorized")
@@ -672,6 +651,7 @@ async def phone_wol_wake_api(payload: dict) -> dict:
     bcast = str(payload.get("broadcast", "255.255.255.255")).strip()
     try:
         phone_control.send_wake_on_lan(mac, bcast)
+        phone_control.wake_pc_display()
         return {"ok": True, "message": f"Wake packet sent to {mac}"}
     except Exception as exc:
         return {"ok": False, "error": str(exc)}
@@ -704,17 +684,87 @@ async def phone_screen_upload_api(request: Request) -> dict:
     return {"ok": False, "error": "No image payload"}
 
 
+def _require_local_dashboard(request: Request) -> None:
+    """Phone OS-control and ADB-pairing APIs are only available to the PC dashboard itself."""
+    client = request.client.host if request.client else ""
+    try:
+        addr = ipaddress.ip_address(client)
+        if addr.is_loopback:
+            return
+    except ValueError:
+        if client == "testclient":
+            return
+    raise HTTPException(status_code=403, detail="For safety, Android OS control must be used from the JARVIS dashboard on this PC (http://127.0.0.1:8000).")
+
+
+def _validated_private_ipv4(host: str) -> str:
+    try: address=ipaddress.ip_address(str(host or "").strip())
+    except ValueError: raise HTTPException(status_code=400, detail="Enter the phone's numeric Wi-Fi IP address.")
+    if not isinstance(address, ipaddress.IPv4Address) or not address.is_private or address.is_loopback or address.is_link_local or address.is_multicast or address.is_unspecified:
+        raise HTTPException(status_code=400, detail="For safety, ADB can connect only to a private IPv4 address on your local network.")
+    return str(address)
+
+
+def _adb_run(args: list[str], timeout: int = 18) -> dict[str, Any]:
+    adb=phone_control.find_adb()
+    if not adb: return {"ok": False, "error": "ADB was not found. Install Android SDK Platform-Tools and restart JARVIS."}
+    try:
+        result=subprocess.run([adb,*args],capture_output=True,text=True,timeout=timeout,check=False,
+            creationflags=getattr(subprocess,"CREATE_NO_WINDOW",0))
+        message=(result.stdout or result.stderr or "ADB command finished.").strip()
+        return {"ok": result.returncode == 0, "message": message[-900:], "adb_devices": phone_control.get_adb_devices()}
+    except subprocess.TimeoutExpired: return {"ok":False,"error":"ADB timed out. Check Wireless debugging and try again."}
+    except Exception as exc: return {"ok":False,"error":f"ADB command failed: {type(exc).__name__}: {exc}"}
+
+
+@app.get("/api/phone/adb/status")
+async def phone_adb_status(request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    adb_path=await asyncio.to_thread(phone_control.find_adb)
+    adb_devs=await asyncio.to_thread(phone_control.get_adb_devices)
+    return {"ok":True,"adb_installed":bool(adb_path),"adb_devices":adb_devs,
+            "message":"Android system control is connected." if adb_devs else ("ADB is ready; connect by USB or Wireless debugging." if adb_path else "Install Android SDK Platform-Tools, then restart JARVIS.")}
+
+
+@app.post("/api/phone/adb/pair")
+async def phone_adb_pair(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    host=_validated_private_ipv4(str(payload.get("host","")))
+    try: port=int(payload.get("port",0))
+    except (ValueError,TypeError): raise HTTPException(status_code=400,detail="Enter the Android pairing port.")
+    code=str(payload.get("pairing_code"," ")).strip()
+    if not 1<=port<=65535: raise HTTPException(status_code=400,detail="Pairing port must be between 1 and 65535.")
+    if not re.fullmatch(r"\d{4,8}",code): raise HTTPException(status_code=400,detail="Enter the temporary numeric pairing code shown by Android.")
+    return await asyncio.to_thread(_adb_run,["pair",f"{host}:{port}",code],25)
+
+
+@app.post("/api/phone/adb/connect")
+async def phone_adb_connect(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    host=_validated_private_ipv4(str(payload.get("host","")))
+    try: port=int(payload.get("port",0))
+    except (ValueError,TypeError): raise HTTPException(status_code=400,detail="Enter the Android Wireless debugging connection port.")
+    if not 1<=port<=65535: raise HTTPException(status_code=400,detail="Connection port must be between 1 and 65535.")
+    result=await asyncio.to_thread(_adb_run,["connect",f"{host}:{port}"],18)
+    message=str(result.get("message","")).lower()
+    if any(x in message for x in ("unable to connect","connection refused","failed to connect","no route to host")): result["ok"]=False
+    return result
+
+
 @app.get("/api/phone/overview")
-async def phone_overview_api() -> dict:
-    adb_devs = phone_control.get_adb_devices()
+async def phone_overview_api(request: Request) -> dict:
+    _require_local_dashboard(request)
+    adb_devs = await asyncio.to_thread(phone_control.get_adb_devices)
+    adb_installed = bool(await asyncio.to_thread(phone_control.find_adb))
     connected = devices.get_connected_phones()
-    path = phone_control.capture_phone_screenshot()
+    path = await asyncio.to_thread(phone_control.capture_phone_screenshot)
     has_shot = bool(path and Path(path).is_file())
     local_ip = devices.get_local_ip()
     return {
         "ok": True,
         "connected_phones": connected,
         "adb_devices": adb_devs,
+        "adb_installed": adb_installed,
         "torch_state": phone_control.get_phone_torch_state(),
         "has_screenshot": has_shot,
         "screenshot_url": f"/api/phone/screenshot?t={int(time.time())}" if has_shot else "",
@@ -724,14 +774,16 @@ async def phone_overview_api() -> dict:
 
 
 @app.post("/api/phone/key")
-async def phone_key_api(payload: dict) -> dict:
+async def phone_key_api(payload: dict, request: Request) -> dict:
+    _require_local_dashboard(request)
     key = str(payload.get("key", "")).strip().lower()
     serial = str(payload.get("serial", "")).strip()
     return await asyncio.to_thread(phone_control.send_phone_key, key, serial)
 
 
 @app.get("/api/phone/screenshot")
-async def phone_screenshot_view() -> Response:
+async def phone_screenshot_view(request: Request) -> Response:
+    _require_local_dashboard(request)
     path = await asyncio.to_thread(phone_control.capture_phone_screenshot)
     if path and Path(path).is_file():
         return Response(content=Path(path).read_bytes(), media_type="image/png",
@@ -740,7 +792,8 @@ async def phone_screenshot_view() -> Response:
 
 
 @app.post("/api/phone/capture_request")
-async def phone_capture_request_api() -> dict:
+async def phone_capture_request_api(request: Request) -> dict:
+    _require_local_dashboard(request)
     return await asyncio.to_thread(phone_control.request_phone_screenshot)
 
 

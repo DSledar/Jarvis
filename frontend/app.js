@@ -1,5 +1,5 @@
 'use strict';
-/* JARVIS command center v4. Every button below is wired to a real endpoint. */
+/* JARVIS command center v5. Low-latency touch controls, truthful device status, improved Sorani prompts. */
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -263,7 +263,7 @@ function triggerWakeUpSequence(opts = true) {
   state.speakReplies = true;
   syncSpeakBtn();
   refreshUI();
-  playWakeChime();
+  if (!playVideo) playWakeChime();
 
   const overlay = $('#wakeUpOverlay');
   const localVideo = $('#wakeLocalVideo');
@@ -299,29 +299,68 @@ function triggerWakeUpSequence(opts = true) {
       localVideo.style.display = 'block';
       if (iframeWrapper) iframeWrapper.classList.add('hidden');
       localVideo.currentTime = 0;
-      localVideo.muted = true; // start muted for compliance
+
+      const updateIntroAudioUI = (muted) => {
+        const icon = $('#introAudioIcon');
+        const text = $('#introAudioText');
+        const prompt = $('#introAudioPrompt');
+        if (muted) {
+          if (icon) icon.textContent = '🔇';
+          if (text) text.textContent = 'Audio: OFF (Click to unmute)';
+          if (prompt) prompt.classList.remove('hidden');
+        } else {
+          if (icon) icon.textContent = '🔊';
+          if (text) text.textContent = 'Audio: ON';
+          if (prompt) prompt.classList.add('hidden');
+        }
+      };
+
+      // Wire audio button & prompt on the overlay
+      const audioBtn = $('#btnToggleIntroAudio');
+      if (audioBtn) {
+        audioBtn.onclick = (e) => {
+          e.stopPropagation();
+          localVideo.muted = !localVideo.muted;
+          if (!localVideo.muted) localVideo.volume = 1.0;
+          updateIntroAudioUI(localVideo.muted);
+        };
+      }
+      const audioPrompt = $('#introAudioPrompt');
+      if (audioPrompt) {
+        audioPrompt.onclick = (e) => {
+          e.stopPropagation();
+          localVideo.muted = false;
+          localVideo.volume = 1.0;
+          updateIntroAudioUI(false);
+        };
+      }
 
       // When the intro video finishes, automatically enter Command Center!
       localVideo.onended = () => {
         dismissWakeOverlay();
       };
 
+      // Attempt unmuted playback first
+      localVideo.muted = false;
+      localVideo.volume = 1.0;
+      updateIntroAudioUI(false);
+
       const playPromise = localVideo.play();
       if (playPromise !== undefined) {
-        playPromise
-          .then(() => {
-            try { localVideo.muted = false; } catch {}
-          })
-          .catch(() => {
-            localVideo.muted = true;
-            localVideo.play().catch(() => {
-              if (iframeWrapper && iframe) {
-                localVideo.style.display = 'none';
-                iframeWrapper.classList.remove('hidden');
-                iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=0&controls=0&enablejsapi=1&rel=0';
-              }
-            });
+        playPromise.then(() => {
+          updateIntroAudioUI(false);
+        }).catch(() => {
+          // Browser autoplay restriction: start muted and show clear prompt
+          localVideo.muted = true;
+          updateIntroAudioUI(true);
+          localVideo.play().catch(() => {
+            if (iframeWrapper && iframe) {
+              localVideo.style.display = 'none';
+              iframeWrapper.classList.remove('hidden');
+              iframe.src = 'https://www.youtube-nocookie.com/embed/LuuOpozKbvE?autoplay=1&mute=1&controls=0&enablejsapi=1&rel=0';
+            }
           });
+        });
       }
     }
 
@@ -370,8 +409,10 @@ function triggerWakeUpSequence(opts = true) {
 
   logActivity('JARVIS systems online (' + (isStartup ? 'Startup intro' : 'Wake-up sequence') + ' initiated)', true);
   toast('Welcome back, Sir. JARVIS is awake!');
-  speak('Welcome back, Sir. All systems are initialized and online.');
-  startBackgroundVoiceListener();
+  if (!playVideo) {
+    speak('Welcome back, Sir. All systems are initialized and online.');
+    startBackgroundVoiceListener();
+  }
 }
 
 function dismissWakeOverlay() {
@@ -406,6 +447,17 @@ function dismissWakeOverlay() {
     }, 300);
   }
   $('#chatInput')?.focus();
+
+  // Voice greeting upon entering the Command Center
+  if (state.speakReplies) {
+    setTimeout(() => {
+      speak('Welcome back, Sir. All systems are initialized and online.');
+    }, 350);
+  }
+
+  if (state.wakeWordEnabled && !state.rec && !state.busy) {
+    setTimeout(() => startBackgroundVoiceListener(), 250);
+  }
 }
 
 function triggerSleepMode() {
@@ -1003,18 +1055,28 @@ async function loadPhoneControl() {
     const adbList = data.adb_devices || [];
     const adbEl = $('#phoneAdbStatus');
     if (adbEl) {
-      if (adbList.length > 0) {
-        adbEl.innerHTML = `<span style="color:var(--green)">✓ ADB Attached (${adbList[0].serial})</span>`;
-      } else {
-        adbEl.innerHTML = `<span class="muted">No USB/TCP ADB (Using Wi-Fi Link)</span>`;
+      adbEl.textContent = adbList.length > 0
+        ? `✓ ADB connected (${adbList[0].serial})`
+        : (data.adb_installed ? 'ADB installed · no phone connected' : 'ADB not found · install Platform-Tools');
+      const adbStatus = $('#adbPairStatus');
+      if (adbStatus && !adbStatus.dataset.userMessage) {
+        adbStatus.textContent = adbList.length ? `Connected to ${adbList.map(d => d.serial).join(', ')}. Phone system controls should be available.`
+          : (data.adb_installed ? 'ADB is installed, but no Android device is paired/connected yet.' : 'ADB is missing. Install Android SDK Platform-Tools, then restart JARVIS.');
       }
     }
 
     // Companion Link
     const linkEl = $('#phoneCtrlPortalLink');
-    if (linkEl && data.portal_url) {
-      linkEl.href = data.portal_url;
-      linkEl.textContent = data.portal_url;
+    const guideLinkEl = $('#guideCompanionLink');
+    if (data.portal_url) {
+      if (linkEl) {
+        linkEl.href = data.portal_url;
+        linkEl.textContent = data.portal_url;
+      }
+      if (guideLinkEl) {
+        guideLinkEl.href = data.portal_url;
+        guideLinkEl.textContent = data.portal_url;
+      }
     }
 
     // Torch button state
@@ -1043,6 +1105,49 @@ async function loadPhoneControl() {
   }
 }
 
+async function refreshAdbStatus() {
+  const statusEl = $('#adbPairStatus');
+  if (statusEl) { statusEl.textContent = 'Checking ADB…'; delete statusEl.dataset.userMessage; }
+  try {
+    const data = await api('/api/phone/adb/status');
+    const connected = data.adb_devices || [];
+    if ($('#phoneAdbStatus')) $('#phoneAdbStatus').textContent = connected.length
+      ? `✓ ADB connected (${connected[0].serial})`
+      : (data.adb_installed ? 'ADB installed · no phone connected' : 'ADB not found · install Platform-Tools');
+    if (statusEl) statusEl.textContent = data.message || (connected.length ? 'Phone connected.' : 'No phone connected yet.');
+  } catch (err) { if (statusEl) statusEl.textContent = `ADB status error: ${err.message}`; }
+}
+
+$('#btnAdbPair')?.addEventListener('click', async () => {
+  const statusEl = $('#adbPairStatus');
+  const payload = { host: $('#adbHost')?.value.trim(), port: $('#adbPairPort')?.value, pairing_code: $('#adbPairCode')?.value.trim() };
+  if (statusEl) { statusEl.textContent = 'Pairing with Android…'; statusEl.dataset.userMessage = '1'; }
+  try {
+    const data = await api('/api/phone/adb/pair', payload);
+    if (!data.ok) throw new Error(data.error || data.message || 'Pairing failed. Check the temporary code and pairing port.');
+    if (statusEl) statusEl.textContent = data.message || 'Pairing successful. Now enter the main Wireless debugging port and press Connect.';
+    $('#adbPairCode').value = '';
+    if (data.adb_devices?.length) { if (statusEl) statusEl.textContent += ` Devices: ${data.adb_devices.map(d => d.serial).join(', ')}`; }
+    toast('ADB pairing successful. Now press Connect using the main Wireless debugging port.');
+    setTimeout(refreshAdbStatus, 500);
+  } catch (err) { if (statusEl) statusEl.textContent = `Pairing failed: ${err.message}`; toast(err.message, true); }
+});
+
+$('#btnAdbConnect')?.addEventListener('click', async () => {
+  const statusEl = $('#adbPairStatus');
+  const payload = { host: $('#adbHost')?.value.trim(), port: $('#adbConnectPort')?.value };
+  if (statusEl) { statusEl.textContent = 'Connecting to Android…'; statusEl.dataset.userMessage = '1'; }
+  try {
+    const data = await api('/api/phone/adb/connect', payload);
+    if (!data.ok) throw new Error(data.error || data.message || 'Connection failed. Recheck the IP/port and make sure Wireless debugging is enabled.');
+    if (statusEl) statusEl.textContent = `${data.message || 'Connected.'}${data.adb_devices?.length ? ' Devices: ' + data.adb_devices.map(d => d.serial).join(', ') : ''}`;
+    toast('Android ADB connected. System-control buttons are now available.');
+    setTimeout(loadPhoneControl, 250); setTimeout(refreshAdbStatus, 500);
+  } catch (err) { if (statusEl) statusEl.textContent = `Connection failed: ${err.message}`; toast(err.message, true); }
+});
+
+$('#btnAdbRefresh')?.addEventListener('click', async () => { await refreshAdbStatus(); await loadPhoneControl(); });
+
 // Phone Control Event Listeners
 $('#btnRefreshPhoneCtrl')?.addEventListener('click', () => {
   loadPhoneControl();
@@ -1052,6 +1157,7 @@ $('#btnRefreshPhoneCtrl')?.addEventListener('click', () => {
 $('#btnQuickWakePhone')?.addEventListener('click', async () => {
   try {
     const res = await api('/api/phone/key', { key: 'wake' });
+    if (!res.ok) throw new Error(res.error || res.message || 'ADB connection required.');
     toast(res.message || 'Sent wake signal to phone!');
   } catch (e) {
     toast('Wake error: ' + e.message, true);
@@ -1081,6 +1187,7 @@ $$('#view-phone-control [data-key]').forEach((btn) => {
     const key = btn.dataset.key;
     try {
       const res = await api('/api/phone/key', { key });
+      if (!res.ok) throw new Error(res.error || res.message || 'ADB connection required.');
       toast(res.message || `Sent ${key} to phone`);
     } catch (e) {
       toast(`Key error (${key}): ${e.message}`, true);
@@ -1709,7 +1816,7 @@ function syncLangSelect() {
 function pickVoice(lang) {
   const voices = speechSynthesis.getVoices(), base = lang.split('-')[0];
   const pick = (l) => voices.find((v) => v.lang === l) || voices.find((v) => v.lang.toLowerCase().startsWith(l.split('-')[0].toLowerCase()));
-  return pick(lang) || (base === 'ckb' ? pick('ar-SA') : null) || null;
+  return pick(lang) || null;
 }
 function stopSpeaking() {
   if (window.speechSynthesis) speechSynthesis.cancel();
@@ -1725,7 +1832,12 @@ function speak(text) {
     speechSynthesis.cancel();
     const cleanText = text.replace(/[*_#`~>\[\]\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
     const parts = (cleanText.match(/[^.!?؟۔\n]+[.!?؟۔]*/g) || [cleanText]).map((p) => p.trim()).filter(Boolean);
-    const voice = pickVoice(state.voiceLang || 'en-US');
+    const selectedLang = state.voiceLang || 'en-US';
+    const voice = pickVoice(selectedLang);
+    if (selectedLang.toLowerCase().startsWith('ckb') && !voice) {
+      toast('This device has no Sorani text-to-speech voice. Kurdish text still works; choose English for spoken replies or install a Sorani voice if your OS offers one.');
+      return resolve();
+    }
     state.speaking = true;
     refreshUI();
     const done = () => {
@@ -1910,13 +2022,37 @@ refreshTunnelStatus();
 // Automatically play fullscreen holographic Stark HUD intro on program start
 triggerWakeUpSequence({ isStartup: true, playVideo: true });
 
-// Unlock audio policy and background listener on first pointer gesture
-window.addEventListener('pointerdown', () => {
+// Unlock audio policy and background listener on first user gesture
+function unlockAllAudio() {
   const vid = $('#wakeLocalVideo');
-  if (vid && vid.muted) {
-    try { vid.muted = false; } catch {}
+  const overlay = $('#wakeUpOverlay');
+  if (vid && overlay && !overlay.classList.contains('hidden') && vid.muted) {
+    try {
+      vid.muted = false;
+      vid.volume = 1;
+      const icon = $('#introAudioIcon');
+      const text = $('#introAudioText');
+      const prompt = $('#introAudioPrompt');
+      if (icon) icon.textContent = '🔊';
+      if (text) text.textContent = 'Audio: ON';
+      if (prompt) prompt.classList.add('hidden');
+    } catch {}
   }
-  if (state.wakeWordEnabled && !state.rec && !state.busy) {
+  if (state.wakeWordEnabled && !state.rec && !state.busy && overlay?.classList.contains('hidden')) {
     startBackgroundVoiceListener();
   }
-}, { once: true });
+}
+
+['pointerdown', 'click', 'keydown'].forEach((evt) => {
+  window.addEventListener(evt, unlockAllAudio);
+});
+
+// Phone Guide copy button
+$('#btnCopyGuideLink')?.addEventListener('click', () => {
+  const link = $('#guideCompanionLink')?.href || (window.location.origin + '/phone');
+  navigator.clipboard?.writeText(link).then(() => {
+    toast('Copied companion URL to clipboard!');
+  }).catch(() => {
+    prompt('Copy this link for your mobile phone:', link);
+  });
+});
