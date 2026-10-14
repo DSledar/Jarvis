@@ -911,9 +911,9 @@ def sync_clipboard_with_phone(direction: str = "to_phone") -> str:
     return "Clipboard ready for phone sync."
 
 
-@tool("unlock_phone", "Unlock Android or connected phone using PIN/passcode and wake screen.",
-      {"pin": "string: PIN or passcode to enter on the phone", "serial": "string: Optional ADB device serial if multiple devices are attached"},
-      required=["pin"])
+@tool("unlock_phone", "Unlock Android or connected phone using PIN/passcode and wake screen. If PIN is omitted, automatically uses the remembered PIN for this phone.",
+      {"pin": "string: Optional PIN or passcode to enter on the phone. If omitted, uses remembered PIN.", "serial": "string: Optional ADB device serial if multiple devices are attached"},
+      required=[])
 def unlock_phone_tool(pin: str = "", serial: str = "") -> str:
     if __package__:
         from . import phone_control
@@ -923,6 +923,21 @@ def unlock_phone_tool(pin: str = "", serial: str = "") -> str:
     if res.get("ok"):
         return f"Phone unlock successful: {res.get('message')}"
     return f"ERROR: Phone unlock failed: {res.get('error', 'Unknown error')}"
+
+
+@tool("switch_phone_to_wifi", "Switch connected USB Android phone to Wireless Wi-Fi ADB so you can unplug the USB cable and retain full control.",
+      {"serial": "string: Optional ADB device serial"},
+      required=[])
+def switch_phone_to_wifi_tool(serial: str = "") -> str:
+    if __package__:
+        from . import phone_control
+    else:
+        import phone_control
+    res = phone_control.switch_to_wireless_adb(device_serial=serial)
+    if res.get("ok"):
+        return res.get("message", "Switched to wireless Wi-Fi mode.")
+    return f"Failed to switch to Wi-Fi mode: {res.get('error')}"
+
 
 
 @tool("phone_adb", "Execute an ADB shell command or keyevent on connected Android phone.",
@@ -1089,7 +1104,7 @@ CATEGORIES = {
     "Mouse and keyboard": ["mouse_click", "mouse_move", "scroll", "type_text", "press_key", "show_desktop", "screen_size"],
     "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "take_screenshot", "look_at_screen", "see_pc_screen", "see_phone_screen", "clipboard", "lock_pc", "sleep_pc"],
     "Python & Coding": ["execute_python", "analyze_code", "python_doc", "write_code_file"],
-    "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "toggle_phone_flashlight", "vibrate_phone", "speak_on_phone", "scan_network_devices", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
+    "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "toggle_phone_flashlight", "vibrate_phone", "speak_on_phone", "scan_network_devices", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "switch_phone_to_wifi", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
     "System and files": ["system_info", "get_time", "list_processes", "list_dir", "read_file", "open_path"],
     "Memory": ["remember", "forget"],
     "Needs your approval": ["run_command", "write_file", "delete_path", "power"],

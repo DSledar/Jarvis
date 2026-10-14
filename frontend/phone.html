@@ -389,6 +389,12 @@
             <span class="live-tag">Live Stream</span>
             <img id="liveScreenStream" class="live-stream-img" alt="Connecting live video feed..." />
             <div id="streamCursorOverlay" class="stream-cursor-overlay hidden"></div>
+            <div id="sleepStreamOverlay" class="sleep-stream-overlay hidden" style="position:absolute; inset:0; background:rgba(2,11,16,0.92); display:none; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:16px; z-index:10;">
+              <div style="font-size:32px; margin-bottom:8px;">💤</div>
+              <b style="color:var(--cyan); font-size:15px;">PC is in Sleep Mode (Modern Standby)</b>
+              <p style="color:var(--muted); font-size:12px; margin:6px 0 14px;">Power is suspended. Live stream is paused to avoid waking the PC.</p>
+              <button id="btnWakeFromOverlay" class="btn-action highlight" style="max-width:200px; padding:10px 16px;">⚡ Wake PC Display</button>
+            </div>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; color:var(--muted)">
             <span>👆 Tap anywhere on the desktop above to click that spot on your PC!</span>
@@ -540,6 +546,10 @@
             <button id="btnWakePC" class="btn-action warning">
               <svg viewBox="0 0 24 24"><path d="M18.36 6.64a9 9 0 11-12.73 0M12 2v10"/></svg>
               Send WoL Packet
+            </button>
+            <button id="btnWakeDisplay" class="btn-action highlight">
+              <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
+              Wake PC Display
             </button>
             <button id="btnSleepPC" class="btn-action danger">
               <svg viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
@@ -1056,8 +1066,47 @@
       }
     };
 
+    function enterSleepStateUI() {
+      const streamImg = document.getElementById('liveScreenStream');
+      if (streamImg) streamImg.src = '';
+      const overlay = document.getElementById('sleepStreamOverlay');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.style.display = 'flex';
+      }
+    }
+
+    function exitSleepStateUI() {
+      const overlay = document.getElementById('sleepStreamOverlay');
+      if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.style.display = 'none';
+      }
+      initLiveScreenStream();
+    }
+
+    async function wakePcDisplay() {
+      toast('Waking PC display...');
+      try {
+        const res = await fetch('/api/phone/wake_display', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+        const d = await res.json();
+        toast(d.message || 'PC display woken!');
+        exitSleepStateUI();
+      } catch (e) {
+        toast('Wake error: ' + e.message);
+      }
+    }
+
+    document.getElementById('btnWakeDisplay')?.addEventListener('click', wakePcDisplay);
+    document.getElementById('btnWakeFromOverlay')?.addEventListener('click', wakePcDisplay);
+
     document.getElementById('btnSleepPC').onclick = async () => {
-      if (!confirm('Put your PC into Sleep / Modern Standby now? You can wake it anytime with Wake-on-LAN.')) return;
+      if (!confirm('Put your PC into Sleep / Modern Standby now? You can wake it anytime with Wake PC Display or WoL.')) return;
+      enterSleepStateUI();
       try {
         const res = await fetch('/api/phone/sleep', {
           method: 'POST',
@@ -1066,7 +1115,10 @@
         });
         const d = await res.json();
         toast('PC entered Sleep mode. Screen turned off.');
-      } catch (e) { toast(e.message); }
+      } catch (e) {
+        toast(e.message);
+        exitSleepStateUI();
+      }
     };
 
     // Phone Unlock & Wake Lock

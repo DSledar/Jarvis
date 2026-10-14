@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import os
 import platform
 import re
 import socket
 import subprocess
+import threading
 import time
 import uuid
 from pathlib import Path
@@ -22,6 +24,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = ROOT / "data"
+SAVED_PHONES_FILE = DATA_DIR / "saved_phones.json"
 SCREEN_DIR = DATA_DIR / "screen_captures"
 SCREEN_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -102,30 +105,300 @@ def download_adb() -> dict[str, Any]:
         return {"ok": False, "error": f"Failed to download ADB: {exc}"}
 
 
-def get_adb_devices() -> list[dict[str, str]]:
+# --------------------------------------------------------------------------- Phone Memory & Saved Credentials
+_SAVED_PHONES_LOCK = threading.RLock()
+
+
+def load_saved_phones() -> dict[str, Any]:
+    """Loads remembered phones and saved credentials from saved_phones.json."""
+    with _SAVED_PHONES_LOCK:
+        if SAVED_PHONES_FILE.is_file():
+            try:
+                data = json.loads(SAVED_PHONES_FILE.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    if "devices" not in data:
+                        data["devices"] = {}
+                    return data
+            except Exception:
+                pass
+        return {"devices": {}, "last_unlocked_pin": "", "default_serial": ""}
+
+
+def save_phone_memory(
+    serial: str,
+    pin: str = "",
+    model: str = "",
+    connection_type: str = "usb",
+    auto_unlock: bool = True,
+) -> dict[str, Any]:
+    """Saves or updates a remembered phone with its PIN, model name, and connection type."""
+    if not serial:
+        return {"ok": False, "error": "Device serial is required."}
+    with _SAVED_PHONES_LOCK:
+        data = load_saved_phones()
+        clean_serial = serial.strip()
+        devices = data.setdefault("devices", {})
+        curr = devices.get(clean_serial, {})
+
+        # If pin not provided, preserve existing pin
+        saved_pin = pin.strip() if pin else curr.get("pin", "")
+        saved_model = model.strip() if model else curr.get("model", "")
+        if not saved_model:
+            saved_model = get_device_model(clean_serial)
+
+        devices[clean_serial] = {
+            "serial": clean_serial,
+            "model": saved_model,
+            "pin": saved_pin,
+            "has_pin": bool(saved_pin),
+            "connection_type": connection_type or curr.get("connection_type", "usb"),
+            "auto_unlock": bool(auto_unlock),
+            "last_connected": time.time(),
+        }
+        if saved_pin:
+            data["last_unlocked_pin"] = saved_pin
+        data["default_serial"] = clean_serial
+
+        try:
+            SAVED_PHONES_FILE.parent.mkdir(parents=True, exist_ok=True)
+            SAVED_PHONES_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return {"ok": True, "device": devices[clean_serial]}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+
+def get_saved_pin_for_device(serial: str = "") -> str:
+    """Retrieves saved PIN for given device serial, or first active connected phone, or fallback last PIN."""
+    data = load_saved_phones()
+    devices = data.get("devices", {})
+    if serial and serial in devices:
+        pin = devices[serial].get("pin", "").strip()
+        if pin:
+            return pin
+
+    # Try currently connected ADB devices
+    adb_devs = get_adb_devices()
+    for d in adb_devs:
+        s = d.get("serial", "")
+        if s in devices and devices[s].get("pin", "").strip():
+            return devices[s]["pin"].strip()
+
+    # Fallback to last unlocked PIN
+    return data.get("last_unlocked_pin", "").strip()
+
+
+def get_saved_phones_list() -> list[dict[str, Any]]:
+    """Returns list of remembered phones with masked PIN status for the UI."""
+    data = load_saved_phones()
+    result = []
+    for s, info in data.get("devices", {}).items():
+        pin = info.get("pin", "")
+        result.append({
+            "serial": s,
+            "model": info.get("model") or "Android Device",
+            "has_pin": bool(pin),
+            "masked_pin": "••••" if pin else "",
+            "connection_type": info.get("connection_type", "usb"),
+            "auto_unlock": info.get("auto_unlock", True),
+            "last_connected": info.get("last_connected", 0),
+        })
+    result.sort(key=lambda x: x["last_connected"], reverse=True)
+    return result
+
+
+def delete_saved_phone(serial: str) -> bool:
+    """Removes a phone from the remembered devices database."""
+    with _SAVED_PHONES_LOCK:
+        data = load_saved_phones()
+        if serial in data.get("devices", {}):
+            del data["devices"][serial]
+            try:
+                SAVED_PHONES_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+                return True
+            except Exception:
+                pass
+    return False
+
+
+def get_device_model(serial: str) -> str:
+    """Queries Android device for product model name and manufacturer."""
+    adb = find_adb()
+    if not adb or not serial:
+        return "Android Device"
+    try:
+        res = subprocess.run([adb, "-s", serial, "shell", "getprop", "ro.product.model"],
+                             capture_output=True, text=True, timeout=3)
+        model = res.stdout.strip()
+        brand_res = subprocess.run([adb, "-s", serial, "shell", "getprop", "ro.product.brand"],
+                                   capture_output=True, text=True, timeout=3)
+        brand = brand_res.stdout.strip().capitalize()
+        if model:
+            if brand and not model.lower().startswith(brand.lower()):
+                return f"{brand} {model}"
+            return model
+    except Exception:
+        pass
+    return "Android Device"
+
+
+def get_adb_devices() -> list[dict[str, Any]]:
     adb = find_adb()
     if not adb:
         return []
     try:
         res = subprocess.run([adb, "devices"], capture_output=True, text=True, timeout=5)
         devices = []
+        saved_data = load_saved_phones().get("devices", {})
         for line in res.stdout.strip().splitlines()[1:]:
             parts = line.strip().split()
             if len(parts) >= 2 and parts[1] == "device":
-                devices.append({"serial": parts[0], "status": parts[1]})
+                serial = parts[0]
+                is_wifi = ":" in serial
+                conn_type = "wifi" if is_wifi else "usb"
+                saved_info = saved_data.get(serial, {})
+                model = saved_info.get("model")
+                if not model or model == "Android Device":
+                    model = get_device_model(serial)
+                pin = saved_info.get("pin", "")
+
+                # Auto-record device in saved_phones.json
+                save_phone_memory(serial=serial, pin=pin, model=model, connection_type=conn_type)
+
+                devices.append({
+                    "serial": serial,
+                    "status": parts[1],
+                    "model": model,
+                    "connection_type": conn_type,
+                    "has_saved_pin": bool(pin),
+                    "masked_pin": "••••" if pin else "",
+                    "auto_unlock": saved_info.get("auto_unlock", True),
+                })
         return devices
     except Exception:
         return []
 
 
+def switch_to_wireless_adb(device_serial: str = "") -> dict[str, Any]:
+    """Switches a connected USB phone to Wireless ADB (port 5555) over Wi-Fi.
+    Allows user to unplug the USB cable and continue full control wirelessly!"""
+    adb = find_adb()
+    if not adb:
+        return {"ok": False, "error": "ADB is not installed. Download ADB via Phone Control Hub first."}
+
+    adb_devs = get_adb_devices()
+    if not adb_devs:
+        return {"ok": False, "error": "No phone is currently connected. Plug in via USB cable first to enable wireless mode."}
+
+    # Find target USB device
+    target = ""
+    target_model = "Android Device"
+    if device_serial:
+        for d in adb_devs:
+            if d["serial"] == device_serial:
+                target = d["serial"]
+                target_model = d.get("model", "Android Device")
+                break
+    if not target:
+        for d in adb_devs:
+            if ":" not in d["serial"]:
+                target = d["serial"]
+                target_model = d.get("model", "Android Device")
+                break
+        if not target:
+            target = adb_devs[0]["serial"]
+            target_model = adb_devs[0].get("model", "Android Device")
+
+    if ":" in target:
+        return {"ok": True, "serial": target, "message": f"Device {target_model} ({target}) is already connected wirelessly via Wi-Fi!"}
+
+    # 1. Enable TCP mode on port 5555
+    res = subprocess.run([adb, "-s", target, "tcpip", "5555"], capture_output=True, text=True, timeout=8)
+    if res.returncode != 0:
+        return {"ok": False, "error": f"Failed to enable TCP mode: {res.stderr or res.stdout}"}
+
+    time.sleep(1.0)
+
+    # 2. Find phone's Wi-Fi IP address
+    phone_ip = ""
+    # Method A: ip route
+    try:
+        route_res = subprocess.run([adb, "-s", target, "shell", "ip", "route"], capture_output=True, text=True, timeout=5)
+        m = re.search(r"\bsrc\s+(\d+\.\d+\.\d+\.\d+)\b", route_res.stdout)
+        if m:
+            phone_ip = m.group(1)
+    except Exception:
+        pass
+
+    # Method B: ip -f inet addr show wlan0
+    if not phone_ip:
+        try:
+            addr_res = subprocess.run([adb, "-s", target, "shell", "ip", "-f", "inet", "addr", "show", "wlan0"],
+                                      capture_output=True, text=True, timeout=5)
+            m = re.search(r"inet\s+(\d+\.\d+\.\d+\.\d+)", addr_res.stdout)
+            if m:
+                phone_ip = m.group(1)
+        except Exception:
+            pass
+
+    # Method C: getprop dhcp.wlan0.ipaddress
+    if not phone_ip:
+        try:
+            prop_res = subprocess.run([adb, "-s", target, "shell", "getprop", "dhcp.wlan0.ipaddress"],
+                                      capture_output=True, text=True, timeout=4)
+            candidate = prop_res.stdout.strip()
+            if re.match(r"^\d+\.\d+\.\d+\.\d+$", candidate):
+                phone_ip = candidate
+        except Exception:
+            pass
+
+    if not phone_ip:
+        return {
+            "ok": False,
+            "error": "ADB TCP mode enabled on port 5555, but could not automatically detect phone's Wi-Fi IP. Please check phone Settings -> About -> IP address and connect manually."
+        }
+
+    # 3. Connect via ADB over Wi-Fi
+    wifi_target = f"{phone_ip}:5555"
+    conn_res = subprocess.run([adb, "connect", wifi_target], capture_output=True, text=True, timeout=10)
+    out = (conn_res.stdout + conn_res.stderr).lower()
+
+    if "connected" in out:
+        saved_pin = get_saved_pin_for_device(target)
+        save_phone_memory(serial=wifi_target, pin=saved_pin, model=target_model, connection_type="wifi")
+        return {
+            "ok": True,
+            "serial": wifi_target,
+            "ip": phone_ip,
+            "model": target_model,
+            "message": f"🎉 Switched to Wireless Wi-Fi ADB! Connected to {target_model} at {wifi_target}. You can now safely UNPLUG the USB cable and continue full control over Wi-Fi!",
+        }
+    else:
+        return {
+            "ok": False,
+            "ip": phone_ip,
+            "error": f"Enabled wireless mode, but 'adb connect {wifi_target}' returned: {conn_res.stdout or conn_res.stderr}. Ensure phone is on the same Wi-Fi network as this PC."
+        }
+
+
 def unlock_phone(pin: str = "", device_serial: str = "") -> dict[str, Any]:
-    """Unlocks Android phone via ADB (if connected) or triggers companion web unlock."""
+    """Unlocks Android phone via ADB (remembering PIN across sessions) or triggers companion web unlock."""
     adb = find_adb()
     adb_devs = get_adb_devices() if adb else []
 
     if adb and adb_devs:
         target = device_serial or adb_devs[0]["serial"]
         cmd_prefix = [adb, "-s", target] if target else [adb]
+        target_model = adb_devs[0].get("model", "Android Device")
+
+        # 1. Resolve PIN (use provided PIN, or retrieve remembered PIN)
+        used_remembered_pin = False
+        resolved_pin = pin.strip() if pin else ""
+        if not resolved_pin:
+            saved_pin = get_saved_pin_for_device(target)
+            if saved_pin:
+                resolved_pin = saved_pin
+                used_remembered_pin = True
+
         try:
             # 1. Wake screen (KEYCODE_POWER or KEYCODE_WAKEUP)
             subprocess.run([*cmd_prefix, "shell", "input", "keyevent", "224"], capture_output=True, timeout=5)
@@ -136,19 +409,42 @@ def unlock_phone(pin: str = "", device_serial: str = "") -> dict[str, Any]:
                            capture_output=True, timeout=5)
             time.sleep(0.5)
 
-            # 3. Enter PIN or password if provided
-            if pin:
-                clean_pin = re.sub(r"[^0-9a-zA-Z]", "", pin)
+            # 3. Enter PIN or password if available
+            pin_entered = False
+            if resolved_pin:
+                clean_pin = re.sub(r"[^0-9a-zA-Z]", "", resolved_pin)
                 subprocess.run([*cmd_prefix, "shell", "input", "text", clean_pin], capture_output=True, timeout=5)
                 time.sleep(0.3)
-                # Press ENTER
+                # Press ENTER (KEYCODE_ENTER)
                 subprocess.run([*cmd_prefix, "shell", "input", "keyevent", "66"], capture_output=True, timeout=5)
+                pin_entered = True
+
+                # Persist PIN into saved memory for future sessions
+                save_phone_memory(
+                    serial=target,
+                    pin=clean_pin,
+                    model=target_model,
+                    connection_type="wifi" if ":" in target else "usb",
+                )
+
+            msg = (
+                f"Unlocked {target_model} ({target}) using remembered PIN."
+                if used_remembered_pin
+                else (
+                    f"Unlocked {target_model} ({target}) with PIN & saved to memory."
+                    if pin_entered
+                    else f"Dispatched Wake & Swipe Up to {target_model} ({target}). (Tip: Enter your PIN once and JARVIS will remember it automatically!)"
+                )
+            )
 
             return {
                 "ok": True,
                 "method": "adb",
                 "device": target,
-                "message": f"Sent unlock sequence to Android device {target} (Wake + Swipe + PIN).",
+                "model": target_model,
+                "pin_used": bool(resolved_pin),
+                "remembered": used_remembered_pin or bool(resolved_pin),
+                "message": msg,
             }
         except Exception as exc:
             return {"ok": False, "method": "adb", "error": str(exc)}
@@ -160,7 +456,7 @@ def unlock_phone(pin: str = "", device_serial: str = "") -> dict[str, Any]:
         return {
             "ok": True,
             "method": "companion_web",
-            "message": "Sent wake signal to connected phone companion. (Tip: For full PIN unlock & lockscreen bypass, plug phone into laptop with USB cable and click 'Detect Connected Phone')."
+            "message": "Sent wake signal to connected phone companion. (Tip: For full PIN unlock & lockscreen bypass, plug phone into laptop with USB cable or switch to Wireless Wi-Fi ADB)."
         }
 
     return {
@@ -407,6 +703,11 @@ _PC_SLEEP_ACTIVE = False
 _STANDBY_FRAME_CACHE = None
 
 
+def is_pc_sleeping() -> bool:
+    """Returns True if PC is currently in sleep / low-power standby mode."""
+    return _PC_SLEEP_ACTIVE
+
+
 def wake_pc_display() -> str:
     """Wakes the PC monitor from Modern Standby (S0) or screen-off idle."""
     global _PC_SLEEP_ACTIVE
@@ -442,12 +743,22 @@ def sleep_pc() -> str:
         except Exception:
             pass
 
-        # 2. Give Windows lock screen 1.2s to fully initialize before cutting monitor power
-        time.sleep(1.2)
+        time.sleep(1.0)
 
-        # 3. For systems supporting traditional ACPI S3 sleep
+        # 2. Modern Standby S0 / ACPI suspend via PowerShell .NET Application::SetSuspendState
         try:
-            ctypes.windll.powrprof.SetSuspendState(0, 0, 0)
+            ps_cmd = 'Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState([System.Windows.Forms.PowerState]::Suspend, $true, $false)'
+            subprocess.run(["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps_cmd],
+                           capture_output=True, timeout=8)
+        except Exception:
+            pass
+
+        # 3. For systems supporting traditional ACPI S3 sleep via ctypes powrprof
+        try:
+            SetSuspendState = ctypes.windll.powrprof.SetSuspendState
+            SetSuspendState.argtypes = [ctypes.c_bool, ctypes.c_bool, ctypes.c_bool]
+            SetSuspendState.restype = ctypes.c_bool
+            SetSuspendState(False, True, False)
         except Exception:
             pass
 
@@ -455,15 +766,6 @@ def sleep_pc() -> str:
         try:
             # HWND_BROADCAST = 0xFFFF, WM_SYSCOMMAND = 0x0112, SC_MONITORPOWER = 0xF170, 2 = Monitor Off
             ctypes.windll.user32.SendMessageW(0xFFFF, 0x0112, 0xF170, 2)
-        except Exception:
-            pass
-
-        # 5. Fallback via background PowerShell to reinforce low-power standby state
-        try:
-            subprocess.Popen([
-                "powershell.exe", "-WindowStyle", "Hidden", "-Command",
-                "Start-Sleep -Milliseconds 300; (Add-Type '[DllImport(\"user32.dll\")]public static extern int SendMessage(int h,int m,int w,int l);' -Name f -Namespace n -PassThru)::SendMessage(0xffff,0x112,0xf170,2)"
-            ], creationflags=subprocess.CREATE_NO_WINDOW if platform.system().lower() == "windows" else 0)
         except Exception:
             pass
 

@@ -236,78 +236,72 @@
           </div>
         </div>
 
-        <!-- Visual 2-Mode Phone Control Guide -->
+        <!-- Visual 3-Mode Phone Control Guide -->
         <div class="phone-guide-banner">
           <div class="guide-header">
             <div class="guide-title">
-              <span class="guide-badge">V5 QUICK GUIDE</span>
-              <h3>How Phone Control Works (2 Simple Ways)</h3>
+              <span class="guide-badge">V5 UNIVERSAL ACCESS</span>
+              <h3>📱 3 Ways to Access Your Phone (USB • Wi-Fi • Cellular)</h3>
             </div>
-            <p class="guide-sub">JARVIS gives you two distinct modes depending on whether you want to control your PC from your phone or control your phone from your PC:</p>
+            <p class="guide-sub">JARVIS connects your phone through 3 seamless tiers depending on where you are:</p>
           </div>
 
-          <div class="guide-modes-grid">
-            <!-- MODE 1 -->
-            <div class="guide-mode-card mode-companion">
+          <div class="guide-modes-grid" style="grid-template-columns:repeat(auto-fit, minmax(280px, 1fr));">
+            <!-- TIER 1: USB -->
+            <div class="guide-mode-card mode-adb">
               <div class="mode-header">
-                <span class="mode-tag tag-easy">MODE 1 • ZERO SETUP (RECOMMENDED)</span>
-                <h4>📱 Wireless Mobile Companion</h4>
-                <span class="mode-desc">Control your PC from your Phone • Any Phone (iPhone or Android)</span>
+                <span class="mode-tag tag-advanced">TIER 1 • PHYSICAL CABLE</span>
+                <h4>🔌 USB Direct Control</h4>
+                <span class="mode-desc">Plug & Play • Full OS Bypass & Unlock</span>
               </div>
               <div class="mode-steps">
-                <div class="step-item">
-                  <span class="step-num">1</span>
-                  <div>Connect your phone to the <b>same Wi-Fi</b> network as your laptop.</div>
-                </div>
-                <div class="step-item">
-                  <span class="step-num">2</span>
-                  <div>Open your phone browser (Safari or Chrome) and navigate to:<br>
-                    <a id="guideCompanionLink" href="/phone" target="_blank" class="guide-link">http://.../phone</a>
-                    <button id="btnCopyGuideLink" type="button" class="mini-copy-btn">Copy Link</button>
-                  </div>
-                </div>
-                <div class="step-item">
-                  <span class="step-num">3</span>
-                  <div>Type the security PIN shown on your laptop dashboard to connect instantly!</div>
-                </div>
+                <div class="step-item"><span class="step-num">1</span><div>Plug phone into laptop with USB charging cable.</div></div>
+                <div class="step-item"><span class="step-num">2</span><div>Enable <b>USB Debugging</b> in Developer Options.</div></div>
+                <div class="step-item"><span class="step-num">3</span><div>Tap <b>"Always allow"</b> on phone screen.</div></div>
               </div>
               <div class="mode-features">
-                <span class="feat-pill">🖥️ Live Laptop Screen</span>
-                <span class="feat-pill">🖱️ Visible Mouse Cursor & Touchpad</span>
-                <span class="feat-pill">💤 Put PC to Sleep (S0/S3)</span>
-                <span class="feat-pill">⚡ Wake PC via Wake-on-LAN</span>
-                <span class="feat-pill">🔦 Phone Flashlight & Vibrate</span>
-                <span class="feat-pill">💬 Voice & Chat from Phone</span>
+                <span class="feat-pill">🔓 Hardware PIN Unlock</span>
+                <span class="feat-pill">🏠 Home / Back Gestures</span>
+                <span class="feat-pill">📸 Instant Screen Capture</span>
               </div>
             </div>
 
-            <!-- MODE 2 -->
-            <div class="guide-mode-card mode-adb">
+            <!-- TIER 2: WI-FI -->
+            <div class="guide-mode-card mode-companion">
               <div class="mode-header">
-                <span class="mode-tag tag-advanced">MODE 2 • DEEP SYSTEM CONTROL</span>
-                <h4>⚡ Android ADB Hardware Control</h4>
-                <span class="mode-desc">Control your Phone from your PC • Android Phones Only</span>
+                <span class="mode-tag tag-easy">TIER 2 • LOCAL WI-FI (NO CABLE)</span>
+                <h4>📶 Wireless Wi-Fi Control</h4>
+                <span class="mode-desc">Wireless ADB (Unplug Cable) + Mobile Companion</span>
               </div>
               <div class="mode-steps">
-                <div class="step-item">
-                  <span class="step-num">1</span>
-                  <div>Plug your Android phone in via <b>USB cable</b> (or enable Wireless Debugging in Developer Options).</div>
-                </div>
-                <div class="step-item">
-                  <span class="step-num">2</span>
-                  <div>On your phone screen, tap <b>"Always allow USB debugging"</b> when prompted.</div>
-                </div>
-                <div class="step-item">
-                  <span class="step-num">3</span>
-                  <div>Use the cards below to enter your phone PIN, press Home/Back, and take phone screenshots!</div>
-                </div>
+                <div class="step-item"><span class="step-num">1</span><div>Connect phone to <b>same Wi-Fi</b> as laptop.</div></div>
+                <div class="step-item"><span class="step-num">2</span><div>Click <b>"Switch to Wireless Mode"</b> below to unplug your USB cable!</div></div>
+                <div class="step-item"><span class="step-num">3</span><div>Or open companion on phone: <a id="guideCompanionLink" href="/phone" target="_blank" class="guide-link">http://.../phone</a></div></div>
               </div>
               <div class="mode-features">
-                <span class="feat-pill">🔓 Unlock Phone Screen with PIN</span>
-                <span class="feat-pill">🏠 Remote Home / Back / Apps</span>
-                <span class="feat-pill">⏻ Wake & Lock Phone Hardware</span>
-                <span class="feat-pill">📸 View Phone Display Screen</span>
-                <span class="feat-pill">🔉 Hardware Volume Controls</span>
+                <span class="feat-pill">🔌 Unplug USB Cable</span>
+                <span class="feat-pill">🖥️ Live Desktop Stream</span>
+                <span class="feat-pill">💤 Put PC to Sleep (S0)</span>
+                <span class="feat-pill">⚡ WoL Wake PC</span>
+              </div>
+            </div>
+
+            <!-- TIER 3: CELLULAR -->
+            <div class="guide-mode-card" style="border:1px solid #7c3aed44; background:linear-gradient(180deg, #160a2b 0%, #080315 100%);">
+              <div class="mode-header">
+                <span class="mode-tag" style="background:#7c3aed33; color:#c084fc; border:1px solid #7c3aed66;">TIER 3 • ANYWHERE ON EARTH</span>
+                <h4>🌐 Cellular Signal (4G/5G)</h4>
+                <span class="mode-desc">Remote Encrypted Tunnel • Outside Home Wi-Fi</span>
+              </div>
+              <div class="mode-steps">
+                <div class="step-item"><span class="step-num">1</span><div>Start JARVIS Remote Tunnel in Nearby & Network tab.</div></div>
+                <div class="step-item"><span class="step-num">2</span><div>Open the secure HTTPS public URL on your phone browser.</div></div>
+                <div class="step-item"><span class="step-num">3</span><div>Full two-way mobile & laptop control over cellular data!</div></div>
+              </div>
+              <div class="mode-features">
+                <span class="feat-pill">🌍 Works Worldwide</span>
+                <span class="feat-pill">📶 4G / 5G / LTE</span>
+                <span class="feat-pill">🔒 End-to-End Encrypted</span>
               </div>
             </div>
           </div>
@@ -339,7 +333,7 @@
                 </div>
               </div>
               <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span class="muted">ADB USB/TCP:</span>
+                <span class="muted">ADB Mode:</span>
                 <span id="phoneAdbStatus" class="muted">Checking ADB...</span>
               </div>
             </div>
@@ -356,27 +350,22 @@
           <!-- Card: Android Debug Bridge (ADB) Phone Connection -->
           <section class="panel">
             <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
-              <h3 style="margin:0;">🔌 Connect Android via USB (Recommended)</h3>
+              <h3 style="margin:0;">🔌 Android Link & Wireless Wi-Fi</h3>
               <span id="phoneAdbBadge" class="tunnel-status-badge stopped">● Disconnected</span>
             </div>
-            <p class="muted" style="margin-top:6px;">Plug your phone into this laptop using your USB charging cable for full hardware control:</p>
-            
-            <div style="background:#04121a; border:1px solid var(--line-soft); border-radius:4px; padding:10px 12px; margin:10px 0; display:flex; flex-direction:column; gap:6px; font-size:14px;">
-              <div><b>Step 1:</b> Plug phone into laptop with USB cable.</div>
-              <div><b>Step 2:</b> Enable <b>USB Debugging</b> in Developer Options.</div>
-              <div><b>Step 3:</b> Tap <b>"Always allow"</b> on your phone screen.</div>
-            </div>
+            <p class="muted" style="margin-top:6px;">Plug via USB or switch to Wireless Wi-Fi ADB to unplug the cable and control freely:</p>
 
             <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;">
               <button class="primary" id="btnDetectUsbPhone" type="button">⚡ Detect Connected Phone</button>
-              <button class="ghost" id="btnInstallAdbTool" type="button">📥 Download ADB Tool (1-Click)</button>
+              <button class="primary" id="btnSwitchAdbWifi" type="button" style="background:linear-gradient(135deg, #0284c7, #06b6d4);">📶 Switch to Wireless Mode (Unplug Cable)</button>
+              <button class="ghost" id="btnInstallAdbTool" type="button">📥 Download ADB Tool</button>
               <button class="ghost" id="btnAdbRefresh" type="button">🔄 Refresh Status</button>
             </div>
             <p id="adbPairStatus" class="muted" role="status" aria-live="polite" style="margin-top:10px; font-size:13.5px;">Checking Android Debug Bridge…</p>
 
-            <details style="margin-top:10px;"><summary style="cursor:pointer; color:var(--cyan); font-weight:600;">📶 Wireless Wi-Fi Debugging (No Cable)</summary>
+            <details style="margin-top:10px;"><summary style="cursor:pointer; color:var(--cyan); font-weight:600;">📶 Manual Wi-Fi IP Connect (Android 11+)</summary>
               <div style="margin-top:10px;">
-                <p class="muted" style="font-size:13px;">If you prefer Wi-Fi instead of a USB cable, use Android 11+ Wireless Debugging:</p>
+                <p class="muted" style="font-size:13px;">Connect directly using your phone's local Wi-Fi IP address:</p>
                 <label for="adbHost" class="muted" style="font-size:13px;">Phone Wi-Fi IP address</label>
                 <input id="adbHost" type="text" inputmode="decimal" placeholder="192.168.1.45" autocomplete="off" style="width:100%; margin:4px 0 8px;" />
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px;">
@@ -384,11 +373,11 @@
                     <input id="adbPairPort" type="number" min="1" max="65535" placeholder="Pairing port" autocomplete="off" style="width:100%; margin-top:4px;" />
                   </label>
                   <label class="muted" for="adbConnectPort" style="font-size:13px;">Debugging port
-                    <input id="adbConnectPort" type="number" min="1" max="65535" placeholder="Connect port" autocomplete="off" style="width:100%; margin-top:4px;" />
+                    <input id="adbConnectPort" type="number" min="1" max="65535" placeholder="5555" autocomplete="off" style="width:100%; margin-top:4px;" />
                   </label>
                 </div>
-                <label class="muted" for="adbPairCode" style="display:block; margin-top:8px; font-size:13px;">Temporary pairing code</label>
-                <input id="adbPairCode" type="password" inputmode="numeric" placeholder="Enter code shown on phone" autocomplete="off" style="width:100%; margin:4px 0 8px;" />
+                <label class="muted" for="adbPairCode" style="display:block; margin-top:8px; font-size:13px;">Temporary pairing code (Optional)</label>
+                <input id="adbPairCode" type="password" inputmode="numeric" placeholder="Enter pairing code if required" autocomplete="off" style="width:100%; margin:4px 0 8px;" />
                 <div style="display:flex; flex-wrap:wrap; gap:8px;">
                   <button class="primary mini" id="btnAdbPair" type="button">Pair over Wi-Fi</button>
                   <button class="ghost mini" id="btnAdbConnect" type="button">Connect</button>
@@ -397,14 +386,35 @@
             </details>
           </section>
 
-          <!-- Card 2: Open & Unlock Phone -->
+          <!-- Card 2: Open & Unlock Phone (with Permanent Memory) -->
           <section class="panel">
-            <h3>🔓 Open & Unlock Phone</h3>
-            <p class="muted">Send unlock PIN/passcode to wake phone screen, dismiss lockscreen swipe, and activate companion wake-lock:</p>
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
+              <h3 style="margin:0;">🔓 Open & Unlock Phone</h3>
+              <span id="savedPinBadge" class="tunnel-status-badge stopped">No Saved PIN</span>
+            </div>
+            <p class="muted" style="margin-top:6px;">JARVIS remembers your plugged-in phones and their PINs so you never have to re-type them:</p>
             <form class="inline-form" id="phoneUnlockForm" style="margin-top:10px;">
               <input id="phoneUnlockPin" type="password" placeholder="Phone PIN or passcode (e.g. 1234)" autocomplete="off" />
-              <button class="primary" type="submit">Unlock Phone</button>
+              <button class="primary" type="submit" id="btnUnlockSubmit">Unlock Phone</button>
+              <button class="ghost" type="button" id="btnAutoUnlock" style="color:var(--cyan); border-color:var(--cyan-dim);">⚡ Auto-Unlock (Saved PIN)</button>
             </form>
+            <div style="display:flex; align-items:center; gap:8px; margin-top:8px; font-size:13px;" class="muted">
+              <label style="display:flex; align-items:center; gap:6px; cursor:pointer;">
+                <input type="checkbox" id="chkRememberPin" checked style="width:auto; margin:0;" />
+                Remember this PIN for this phone (auto-unlock anytime)
+              </label>
+            </div>
+
+            <!-- Remembered Phones List -->
+            <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--line-soft);">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <span style="font-size:13.5px; font-weight:600; color:var(--cyan);">🧠 Remembered Phones & PINs:</span>
+                <button class="ghost mini" id="btnRefreshSavedPhones" type="button">Refresh</button>
+              </div>
+              <div id="savedPhonesList" style="margin-top:8px; display:flex; flex-direction:column; gap:6px; font-size:13px;">
+                <span class="muted">Loading saved devices…</span>
+              </div>
+            </div>
             
             <h4 style="margin:16px 0 8px; font-size:14.5px; color:var(--cyan);">Quick Phone Keys & Gestures</h4>
             <div class="row-btns" style="display:flex; flex-wrap:wrap; gap:8px;">

@@ -227,11 +227,17 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
         return Plan(steps=[("scan_network_devices", {"force": True})],
                     say=lambda r: r[0], name="scan_network")
 
-    m = re.match(r"^(?:please )?(?:unlock|افتح|کردنەوەی)\s+(?:my\s+)?(?:phone|mobile|تلفوني|مۆبایل)(?:\s+(?:with\s+)?(?:pin|pass|passcode)?\s*([0-9a-zA-Z]+))?$", text)
-    if m:
-        pin = (m.group(1) or "").strip()
-        return Plan(steps=[("unlock_phone", {"pin": pin})],
-                    say=_result_say(lambda: f"مۆبایلەکە کرایەوە{' بە PIN' if pin else ''}." if lang == "ku" else f"Unlocking phone{' with PIN' if pin else ''}."), name="unlock_phone")
+    # Phone unlock (with optional PIN or automatic remembered PIN)
+    pin_m = re.search(r"\b(?:pin|pass|passcode|کۆدی|کۆد)?\s*([0-9]{4,8})\b", text)
+    pin_found = pin_m.group(1) if pin_m else ""
+    if re.search(r"\b(?:unlock|open)\s+(?:my\s+)?(?:phone|mobile|screen)\b|\b(?:افتح|فتح)\s+(?:الهاتف|الموبايل|الجوال|تلفوني)\b|مۆبایلەکەم بکەوە|مۆبایلم بکەوە|مۆبایل بکەوە|مۆبایلەکە بکەوە|کردنەوەی مۆبایل|تەلەفۆنەکەم بکەوە|تەلەفۆن بکەوە|بێ کۆد مۆبایل", text):
+        return Plan(steps=[("unlock_phone", {"pin": pin_found})],
+                    say=_result_say(lambda: f"مۆبایلەکەت دەکرێتەوە{' بە کۆد' if pin_found else ' بە کۆدی یادگاری'}." if lang == "ku" else f"Unlocking phone{' with PIN' if pin_found else ' with remembered PIN'}."), name="unlock_phone")
+
+    if re.search(r"\b(?:switch to wireless|switch phone to wifi|wireless adb|unplug phone|phone wifi mode)\b|مۆبایل بخە سەر وایفای|مۆبایلم بخە سەر وایفای|وایفای مۆبایل|وایەر لە مۆبایل دەربێنە", text):
+        return Plan(steps=[("switch_phone_to_wifi", {})],
+                    say=_result_say(lambda: "مۆبایلەکەت خرایە دۆخی وایفای، ئێستا دەتوانیت وایەرەکە لێ بکەیتەوە." if lang == "ku" else "Switched phone to wireless Wi-Fi mode. You can now unplug the cable."), name="switch_phone_to_wifi")
+
     if re.search(r"\b(wake pc|wake my pc|turn on my pc|wake on lan|wol)\b|شغل الكمبيوتر|کۆمپیوتەر پێبکە|کۆمپیوتەر هەڵسێنە|کۆمپیوتەر وەخەبەر بێنە", text):
         return Plan(steps=[("wake_pc_lan", {})],
                     say=_result_say(lambda: "سیگناڵی هەڵساندنی کۆمپیوتەر نێردرا." if lang == "ku" else "Sent Wake-on-LAN packet to PC."), name="wake_pc")

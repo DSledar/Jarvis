@@ -509,10 +509,13 @@ async def phone_screen_mjpeg_stream(token: str = "") -> StreamingResponse:
     async def frame_generator():
         try:
             while True:
+                if phone_control.is_pc_sleeping():
+                    await asyncio.sleep(1.5)
+                    continue
                 frame = await asyncio.to_thread(phone_control.capture_pc_screen_bytes, 960, 58)
                 yield (b"--frame\r\n" b"Content-Type: image/jpeg\r\n"
                        b"Content-Length: " + str(len(frame)).encode("ascii") + b"\r\n\r\n" + frame + b"\r\n")
-                await asyncio.sleep(0.025)
+                await asyncio.sleep(0.04)
         except asyncio.CancelledError:
             pass
         except Exception:
@@ -666,6 +669,16 @@ async def phone_sleep_api(payload: dict) -> dict:
     return {"ok": True, "message": msg}
 
 
+@app.post("/api/phone/wake_display")
+async def phone_wake_display_api(payload: dict) -> dict:
+    tok = str(payload.get("token", ""))
+    if tok and not devices.validate_token(tok):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    msg = phone_control.wake_pc_display()
+    return {"ok": True, "message": msg}
+
+
+
 @app.post("/api/phone/screen_upload")
 async def phone_screen_upload_api(request: Request) -> dict:
     data = await request.json()
@@ -766,11 +779,44 @@ async def phone_adb_connect(payload: dict, request: Request) -> dict[str, Any]:
     return result
 
 
+@app.post("/api/phone/adb/switch_wifi")
+async def phone_adb_switch_wifi(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    serial = str(payload.get("serial", "")).strip()
+    return await asyncio.to_thread(phone_control.switch_to_wireless_adb, serial)
+
+
+@app.get("/api/phone/saved")
+async def phone_saved_list_api(request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    saved = await asyncio.to_thread(phone_control.get_saved_phones_list)
+    return {"ok": True, "saved_phones": saved}
+
+
+@app.post("/api/phone/saved")
+async def phone_save_pin_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    serial = str(payload.get("serial", "")).strip()
+    pin = str(payload.get("pin", "")).strip()
+    model = str(payload.get("model", "")).strip()
+    res = await asyncio.to_thread(phone_control.save_phone_memory, serial, pin, model)
+    return res
+
+
+@app.delete("/api/phone/saved")
+async def phone_delete_saved_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    serial = str(payload.get("serial", "")).strip()
+    deleted = await asyncio.to_thread(phone_control.delete_saved_phone, serial)
+    return {"ok": True, "deleted": deleted}
+
+
 @app.get("/api/phone/overview")
 async def phone_overview_api(request: Request) -> dict:
     _require_local_dashboard(request)
     adb_devs = await asyncio.to_thread(phone_control.get_adb_devices)
     adb_installed = bool(await asyncio.to_thread(phone_control.find_adb))
+    saved_phones = await asyncio.to_thread(phone_control.get_saved_phones_list)
     connected = devices.get_connected_phones()
     path = await asyncio.to_thread(phone_control.capture_phone_screenshot)
     has_shot = bool(path and Path(path).is_file())
@@ -779,6 +825,7 @@ async def phone_overview_api(request: Request) -> dict:
         "ok": True,
         "connected_phones": connected,
         "adb_devices": adb_devs,
+        "saved_phones": saved_phones,
         "adb_installed": adb_installed,
         "torch_state": phone_control.get_phone_torch_state(),
         "has_screenshot": has_shot,
@@ -786,6 +833,7 @@ async def phone_overview_api(request: Request) -> dict:
         "local_ip": local_ip,
         "portal_url": f"http://{local_ip}:8000/phone",
     }
+
 
 
 @app.post("/api/phone/key")

@@ -1101,6 +1101,69 @@ async function loadPhoneControl() {
       if (imgEl) imgEl.style.display = 'none';
       if (placeEl) placeEl.style.display = 'block';
     }
+
+    // Render Remembered Phones & Saved PIN Status
+    const savedList = data.saved_phones || [];
+    const savedContainer = $('#savedPhonesList');
+    const savedBadge = $('#savedPinBadge');
+    const autoUnlockBtn = $('#btnAutoUnlock');
+    const activeAdb = data.adb_devices || [];
+
+    let hasActivePin = false;
+    if (activeAdb.length && activeAdb[0].has_saved_pin) {
+      hasActivePin = true;
+    } else if (savedList.some(s => s.has_pin)) {
+      hasActivePin = true;
+    }
+
+    if (savedBadge) {
+      if (hasActivePin) {
+        savedBadge.textContent = '● Saved PIN Active';
+        savedBadge.className = 'tunnel-status-badge running';
+      } else {
+        savedBadge.textContent = 'No Saved PIN';
+        savedBadge.className = 'tunnel-status-badge stopped';
+      }
+    }
+
+    if (autoUnlockBtn) {
+      autoUnlockBtn.style.opacity = hasActivePin ? '1' : '0.7';
+      autoUnlockBtn.title = hasActivePin ? 'Click to auto-unlock phone with remembered PIN' : 'Enter PIN once and JARVIS will remember it';
+    }
+
+    if (savedContainer) {
+      if (!savedList.length) {
+        savedContainer.innerHTML = '<span class="muted" style="font-size:12.5px;">No saved phones yet. Plug in your phone and unlock once with PIN to remember it forever.</span>';
+      } else {
+        savedContainer.innerHTML = savedList.map(p => `
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#04121a; border:1px solid var(--line-soft); border-radius:4px; padding:6px 10px;">
+            <div>
+              <b style="color:var(--cyan);">${escapeHtml(p.model || 'Android Phone')}</b>
+              <span class="muted" style="margin-left:6px; font-size:12px; font-family:var(--mono);">(${escapeHtml(p.serial)})</span>
+              <span style="margin-left:6px; font-size:11px; padding:1px 5px; border-radius:3px; background:${p.connection_type === 'wifi' ? '#06b6d422; color:#38bdf8;' : '#10b98122; color:#34d399;'}">${p.connection_type === 'wifi' ? '📶 Wi-Fi' : '🔌 USB'}</span>
+            </div>
+            <div style="display:flex; align-items:center; gap:8px;">
+              <span style="font-size:12px; color:${p.has_pin ? 'var(--green)' : 'var(--amber)'}; font-family:var(--mono);">
+                ${p.has_pin ? '🔒 Saved PIN: ••••' : '⚠️ No PIN saved'}
+              </span>
+              <button class="ghost mini btn-forget-phone" data-serial="${escapeHtml(p.serial)}" type="button" style="color:var(--red); padding:2px 6px;">Forget</button>
+            </div>
+          </div>
+        `).join('');
+
+        savedContainer.querySelectorAll('.btn-forget-phone').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const serial = e.currentTarget.dataset.serial;
+            if (!confirm(`Forget remembered settings and PIN for ${serial}?`)) return;
+            try {
+              await api('/api/phone/saved', { serial }, 'DELETE');
+              toast('Forgot saved device PIN.');
+              loadPhoneControl();
+            } catch (err) { toast(err.message, true); }
+          });
+        });
+      }
+    }
   } catch (err) {
     console.warn('loadPhoneControl error:', err);
   }
@@ -1144,6 +1207,25 @@ $('#btnDetectUsbPhone')?.addEventListener('click', async () => {
     await loadPhoneControl();
   } catch (err) {
     toast(`Scan error: ${err.message}`, true);
+  }
+});
+
+$('#btnSwitchAdbWifi')?.addEventListener('click', async () => {
+  const statusEl = $('#adbPairStatus');
+  if (statusEl) { statusEl.textContent = 'Enabling TCP port 5555 and discovering phone Wi-Fi IP…'; statusEl.dataset.userMessage = '1'; }
+  toast('Switching phone to Wireless Wi-Fi ADB...');
+  try {
+    const res = await api('/api/phone/adb/switch_wifi', {});
+    if (res.ok) {
+      toast(res.message || 'Switched to wireless Wi-Fi! You can now unplug the cable.');
+      if (statusEl) statusEl.textContent = `✓ ${res.message}`;
+    } else {
+      toast(`Wireless switch failed: ${res.error}`, true);
+      if (statusEl) statusEl.textContent = `Wireless switch failed: ${res.error}`;
+    }
+    await loadPhoneControl();
+  } catch (err) {
+    toast(`Wireless switch error: ${err.message}`, true);
   }
 });
 
@@ -1206,6 +1288,11 @@ $('#btnRefreshPhoneCtrl')?.addEventListener('click', () => {
   toast('Refreshed phone status.');
 });
 
+$('#btnRefreshSavedPhones')?.addEventListener('click', () => {
+  loadPhoneControl();
+  toast('Refreshed saved phones & PINs.');
+});
+
 $('#btnQuickWakePhone')?.addEventListener('click', async () => {
   try {
     const res = await api('/api/phone/key', { key: 'wake' });
@@ -1213,6 +1300,21 @@ $('#btnQuickWakePhone')?.addEventListener('click', async () => {
     toast(res.message || 'Sent wake signal to phone!');
   } catch (e) {
     toast('Wake error: ' + e.message, true);
+  }
+});
+
+$('#btnAutoUnlock')?.addEventListener('click', async () => {
+  toast('Unlocking with remembered PIN...');
+  try {
+    const res = await api('/api/phone/unlock', { pin: '' });
+    if (res.ok) {
+      toast(res.message || 'Phone auto-unlocked successfully!');
+      setTimeout(loadPhoneControl, 800);
+    } else {
+      toast('Auto-unlock failed: ' + (res.error || 'Enter your PIN once to save it for auto-unlock'), true);
+    }
+  } catch (err) {
+    toast('Auto-unlock error: ' + err.message, true);
   }
 });
 
