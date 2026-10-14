@@ -1,5 +1,24 @@
 {
-  "devices": {},
-  "last_unlocked_pin": "",
-  "default_serial": ""
+  "devices": {
+    "GIBEPF4TFUEE79GA": {
+      "serial": "GIBEPF4TFUEE79GA",
+      "model": "Poco 2412DPC0AG",
+      "pin": "0000",
+      "has_pin": true,
+      "connection_type": "usb",
+      "auto_unlock": true,
+      "last_connected": 1791981085.8718622
+    },
+    "147963762V000201": {
+      "serial": "147963762V000201",
+      "model": "Infinix X6885",
+      "pin": "0000",
+      "has_pin": true,
+      "connection_type": "usb",
+      "auto_unlock": true,
+      "last_connected": 1791981075.8297217
+    }
+  },
+  "last_unlocked_pin": "0000",
+  "default_serial": "GIBEPF4TFUEE79GA"
 }
