@@ -29,7 +29,7 @@ async function api(path, body, method) {
     : { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: body !== undefined ? JSON.stringify(body) : undefined };
   const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.detail || `Server error ${res.status}`);
+  if (!res.ok) throw new Error(data.detail || data.error || data.message || `Server error ${res.status}`);
   return data;
 }
 function toast(text, bad = false) {
@@ -1153,21 +1153,51 @@ async function loadPhoneControl() {
         savedContainer.innerHTML = '<span class="muted" style="font-size:12.5px;">No saved phones yet. Plug in your phone and unlock once with PIN to remember it forever.</span>';
       } else {
         savedContainer.innerHTML = savedList.map(p => `
-          <div style="display:flex; justify-content:space-between; align-items:center; background:#04121a; border:1px solid var(--line-soft); border-radius:4px; padding:6px 10px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; background:#04121a; border:1px solid var(--line-soft); border-radius:4px; padding:8px 12px; flex-wrap:wrap; gap:8px;">
             <div>
-              <b style="color:var(--cyan);">${escapeHtml(p.model || 'Android Phone')}</b>
+              <b style="color:var(--cyan); font-size:13.5px;">${escapeHtml(p.model || 'Android Phone')}</b>
               <span class="muted" style="margin-left:6px; font-size:12px; font-family:var(--mono);">(${escapeHtml(p.serial)})</span>
-              <span style="margin-left:6px; font-size:11px; padding:1px 5px; border-radius:3px; background:${p.connection_type === 'wifi' ? '#06b6d422; color:#38bdf8;' : '#10b98122; color:#34d399;'}">${p.connection_type === 'wifi' ? '📶 Wi-Fi' : '🔌 USB'}</span>
-            </div>
-            <div style="display:flex; align-items:center; gap:8px;">
-              <span style="font-size:12px; color:${p.has_pin ? 'var(--green)' : 'var(--amber)'}; font-family:var(--mono);">
-                ${p.has_pin ? '🔒 Saved PIN: ••••' : '⚠️ No PIN saved'}
+              <span style="margin-left:6px; font-size:11px; padding:2px 6px; border-radius:3px; background:${p.connection_type === 'wifi' ? '#06b6d422; color:#38bdf8;' : p.connection_type === 'cellular' ? '#f59e0b22; color:#fbbf24;' : '#10b98122; color:#34d399;'}">
+                ${p.connection_type === 'wifi' ? '📶 Wi-Fi' : p.connection_type === 'cellular' ? '📡 Cellular' : '🔌 USB'}
               </span>
-              <button class="ghost mini btn-forget-phone" data-serial="${escapeHtml(p.serial)}" type="button" style="color:var(--red); padding:2px 6px;">Forget</button>
+              <span style="margin-left:6px; font-size:12px; color:${p.has_pin ? 'var(--green)' : 'var(--amber)'}; font-family:var(--mono);">
+                ${p.has_pin ? '🔒 PIN: ••••' : '⚠️ No PIN'}
+              </span>
+            </div>
+            <div style="display:flex; align-items:center; gap:6px;">
+              <button class="ghost mini btn-unlock-specific" data-serial="${escapeHtml(p.serial)}" type="button" style="color:var(--cyan); border-color:var(--cyan-dim); padding:3px 8px;" title="Unlock this device">🔓 Unlock</button>
+              <button class="ghost mini btn-edit-phone" data-serial="${escapeHtml(p.serial)}" data-model="${escapeHtml(p.model || '')}" data-type="${escapeHtml(p.connection_type || 'usb')}" data-autounlock="${p.auto_unlock ? '1' : '0'}" type="button" style="color:var(--amber); padding:3px 8px;">✏️ Edit</button>
+              <button class="ghost mini btn-forget-phone" data-serial="${escapeHtml(p.serial)}" type="button" style="color:var(--red); padding:3px 8px;">🗑️ Forget</button>
             </div>
           </div>
         `).join('');
 
+        // Unlock specific phone
+        savedContainer.querySelectorAll('.btn-unlock-specific').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const serial = e.currentTarget.dataset.serial;
+            toast(`Unlocking ${serial}...`);
+            try {
+              const res = await api('/api/phone/unlock', { pin: '', serial });
+              if (res.ok) {
+                toast(res.message || 'Device unlocked successfully!');
+                setTimeout(loadPhoneControl, 800);
+              } else {
+                toast('Unlock failed: ' + (res.error || 'Check connection'), true);
+              }
+            } catch (err) { toast('Unlock error: ' + err.message, true); }
+          });
+        });
+
+        // Edit phone
+        savedContainer.querySelectorAll('.btn-edit-phone').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const serial = e.currentTarget.dataset.serial;
+            openPhoneEditorModal(serial);
+          });
+        });
+
+        // Forget phone
         savedContainer.querySelectorAll('.btn-forget-phone').forEach(btn => {
           btn.addEventListener('click', async (e) => {
             const serial = e.currentTarget.dataset.serial;

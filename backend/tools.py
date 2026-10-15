@@ -2,8 +2,7 @@
 
 Safe actions run immediately. Risky ones (shell commands, writing/deleting files,
 shutdown/restart) are queued in PENDING and only run after you click Approve
-in the dashboard.
-"""
+in the dashboard.\n"""
 from __future__ import annotations
 
 import base64
@@ -916,9 +915,9 @@ def sync_clipboard_with_phone(direction: str = "to_phone") -> str:
       required=[])
 def unlock_phone_tool(pin: str = "", serial: str = "") -> str:
     if __package__:
-        from . import phone_control
+            import phone_control
     else:
-        import phone_control
+            import phone_control
     res = phone_control.unlock_phone(pin=pin, device_serial=serial)
     if res.get("ok"):
         return f"Phone unlock successful: {res.get('message')}"
@@ -930,9 +929,9 @@ def unlock_phone_tool(pin: str = "", serial: str = "") -> str:
       required=[])
 def switch_phone_to_wifi_tool(serial: str = "") -> str:
     if __package__:
-        from . import phone_control
+            import phone_control
     else:
-        import phone_control
+            import phone_control
     res = phone_control.switch_to_wireless_adb(device_serial=serial)
     if res.get("ok"):
         return res.get("message", "Switched to wireless Wi-Fi mode.")
@@ -945,9 +944,9 @@ def switch_phone_to_wifi_tool(serial: str = "") -> str:
       required=["command"])
 def phone_adb_tool(command: str) -> str:
     if __package__:
-        from . import phone_control
+            import phone_control
     else:
-        import phone_control
+            import phone_control
     adb = phone_control.find_adb()
     if not adb:
         return "ERROR: ADB is not installed or not found. Connect phone companion via Wi-Fi portal instead."
@@ -964,9 +963,9 @@ def phone_adb_tool(command: str) -> str:
       {"mac": "string: Target MAC address (leave empty to use this PC's MAC address)"})
 def wake_pc_lan_tool(mac: str = "") -> str:
     if __package__:
-        from . import phone_control
+            import phone_control
     else:
-        import phone_control
+            import phone_control
     target_mac = mac.strip() or phone_control.get_mac_address()
     try:
         info = phone_control.get_wol_info()
@@ -980,9 +979,9 @@ def wake_pc_lan_tool(mac: str = "") -> str:
       {"question": "string: What to inspect or look for on the screen"})
 def see_pc_screen_tool(question: str = "") -> str:
     if __package__:
-        from . import phone_control
+            import phone_control
     else:
-        import phone_control
+            import phone_control
     try:
         data = phone_control.capture_pc_screen_bytes()
         import win32gui
@@ -997,9 +996,9 @@ def see_pc_screen_tool(question: str = "") -> str:
       {"question": "string: What to inspect on the phone screen"})
 def see_phone_screen_tool(question: str = "") -> str:
     if __package__:
-        from . import phone_control
+            import phone_control
     else:
-        import phone_control
+            import phone_control
     path = phone_control.capture_phone_screenshot()
     if path:
         return f"Mobile screen image captured and stored at {path}. Screen is visible and active."
@@ -1174,26 +1173,176 @@ def stark_diagnostics() -> str:
     procs_str = ", ".join(f"{p.info['name']} ({p.info['memory_percent'] or 0:.1f}%)" for p in top_procs)
     bat_str = "AC Power (Desktop)" if not bat else f"{bat.percent:.0f}% ({'Charging' if bat.power_plugged else 'Discharging'})"
     return (
-        f"STARK HUD DIAGNOSTICS REPORT:
-"
-        f"- CPU: {psutil.cpu_percent(interval=0.3)}% utilization across {cores} logical cores{freq_str}
-"
-        f"- Memory: {vm.percent}% used ({vm.used / (1024**3):.1f} GB / {vm.total / (1024**3):.1f} GB)
-"
-        f"- Primary Storage: {du.percent}% used ({du.free / (1024**3):.1f} GB free)
-"
-        f"- Power Cell: {bat_str}
-"
+        f"STARK HUD DIAGNOSTICS REPORT:\n"
+        f"- CPU: {psutil.cpu_percent(interval=0.3)}% utilization across {cores} logical cores{freq_str}\n"
+        f"- Memory: {vm.percent}% used ({vm.used / (1024**3):.1f} GB / {vm.total / (1024**3):.1f} GB)\n"
+        f"- Primary Storage: {du.percent}% used ({du.free / (1024**3):.1f} GB free)\n"
+        f"- Power Cell: {bat_str}\n"
         f"- Top Active Processes: {procs_str}"
     )
 
 
+
+# ----------------------------------------------------------------------------- Phone Calling (V6)
+@tool("make_phone_call", "Initiate a phone call to a phone number or contact via connected Android phone.",
+      params={"phone_number": "str: the phone number to call (e.g. +9647501234567 or local number)",
+              "direct": "bool: True to place call immediately, False to open dialer with number dialed"})
+def make_phone_call_tool(phone_number: str, direct: bool = True) -> str:
+    res = phone_control.make_phone_call(phone_number, direct=direct)
+    if res.get("ok"):
+        return f"Phone call dispatched: {res.get('message')}"
+    return f"Phone call failed: {res.get('error', 'Unknown error')}"
+
+
+@tool("end_phone_call", "Hang up or end an active phone call on the connected Android phone.")
+def end_phone_call_tool() -> str:
+    res = phone_control.end_phone_call()
+    return res.get("message") if res.get("ok") else f"Error: {res.get('error')}"
+
+
+@tool("answer_phone_call", "Answer an incoming phone call on the connected Android phone.")
+def answer_phone_call_tool() -> str:
+    res = phone_control.answer_phone_call()
+    return res.get("message") if res.get("ok") else f"Error: {res.get('error')}"
+
+
+# ----------------------------------------------------------------------------- Social Media, Messages & Emails (V6)
+@tool("read_social_messages", "Read incoming messages and notifications from WhatsApp, Telegram, Instagram, Messenger, SMS, etc. from connected phone.",
+      params={"count": "int: number of recent messages to inspect (default 10)"})
+def read_social_messages_tool(count: int = 10) -> str:
+    data = social_reader.read_all_social_and_emails(count=count)
+    return social_reader.format_messages_report(data)
+
+
+@tool("read_phone_notifications", "Inspect raw active incoming notifications from the connected Android phone.",
+      params={"count": "int: number of notifications to inspect (default 12)"})
+def read_phone_notifications_tool(count: int = 12) -> str:
+    notifs = social_reader.read_phone_notifications(count=count)
+    if not notifs:
+        return "No active notifications found on connected phone (or phone is not connected via ADB/Wi-Fi)."
+    lines = [f"- [{n['app']}] {n['sender_or_title']}: {n['message']}" for n in notifs]
+    body = "\n".join(lines)
+    return f"ACTIVE PHONE NOTIFICATIONS ({len(notifs)} found):\n{body}"
+
+
+@tool("read_emails", "Fetch and read recent received emails from configured mailbox or phone notifications.",
+      params={"count": "int: number of emails to read (default 5)",
+              "unread_only": "bool: True to only show unread emails, False for all recent emails"})
+def read_emails_tool(count: int = 5, unread_only: bool = True) -> str:
+    direct = social_reader.read_direct_imap_emails(count=count, unread_only=unread_only)
+    if direct:
+        lines = [f"- From: {e['from']} | Subject: '{e['subject']}' ({e.get('date', '')})" for e in direct]
+        body = "\n".join(lines)
+        return f"RECENT EMAILS (Mailbox):\n{body}"
+    # Check phone notifications for Gmail / Outlook
+    phone_notifs = social_reader.read_phone_notifications(count=15)
+    mail_notifs = [n for n in phone_notifs if "mail" in n["app"].lower() or "outlook" in n["app"].lower()]
+    if mail_notifs:
+        lines = [f"- [{n['app']}] {n['sender_or_title']}: {n['message']}" for n in mail_notifs]
+        body = "\n".join(lines)
+        return f"RECENT EMAILS (From Phone Notifications):\n{body}"
+    return ("No new unread emails found, Sir. To enable direct Gmail/Outlook inbox reading, "
+            "configure your email in the settings or data/email_config.json.")
+
+
+# ----------------------------------------------------------------------------- Always-On Screen Awareness (V6)
+@tool("always_see_pc_screen", "Inspect what is currently on the laptop screen right now, including focused window, active app, and open programs.")
+def always_see_pc_screen_tool() -> str:
+    return screen_awareness.analyze_screen_details()
+
+
+# ----------------------------------------------------------------------------- Laptop Hardware & Windows Control (V6)
+@tool("set_screen_brightness", "Set the laptop display brightness percentage (0-100%).",
+      params={"percent": "int: brightness percentage from 0 to 100"})
+def set_screen_brightness_tool(percent: int) -> str:
+    clamped = max(0, min(100, int(percent)))
+    if not IS_WINDOWS:
+        return "Brightness control only available on Windows."
+    try:
+        ps_cmd = f"(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightnessMethods).WmiSetBrightness(1, {clamped})"
+        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                       capture_output=True, timeout=8, creationflags=NO_WINDOW)
+        return f"Laptop screen brightness set to {clamped}%."
+    except Exception as exc:
+        return f"Failed to set brightness: {exc}"
+
+
+@tool("get_screen_brightness", "Get current laptop screen brightness level.")
+def get_screen_brightness_tool() -> str:
+    if not IS_WINDOWS:
+        return "Brightness inspection only available on Windows."
+    try:
+        ps_cmd = "(Get-WmiObject -Namespace root/WMI -Class WmiMonitorBrightness).CurrentBrightness"
+        res = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_cmd],
+                             capture_output=True, text=True, timeout=8, creationflags=NO_WINDOW)
+        val = res.stdout.strip()
+        return f"Current laptop brightness is {val}%." if val else "Brightness level could not be read."
+    except Exception as exc:
+        return f"Error reading brightness: {exc}"
+
+
+@tool("snap_window", "Snap the currently active window to a side of the screen (left, right, up/maximize, down/minimize).",
+      params={"direction": "str: 'left', 'right', 'up' (maximize), or 'down' (minimize/restore)"})
+def snap_window_tool(direction: str) -> str:
+    d = direction.strip().lower()
+    key_map = {"left": "left", "right": "right", "up": "up", "down": "down",
+               "max": "up", "min": "down"}
+    k = key_map.get(d, "up")
+    pyautogui.hotkey("win", k)
+    return f"Snapped active window {d}."
+
+
+@tool("switch_app", "Switch to the next active application window (Alt+Tab).")
+def switch_app_tool() -> str:
+    pyautogui.hotkey("alt", "tab")
+    return "Switched active application."
+
+
+@tool("open_settings_page", "Open a specific Windows settings page directly (e.g. wifi, display, sound, bluetooth, apps, battery, update).",
+      params={"page": "str: settings page name, e.g. 'wifi', 'display', 'bluetooth', 'sound', 'battery', 'apps', 'update'"})
+def open_settings_page_tool(page: str) -> str:
+    page_map = {
+        "wifi": "ms-settings:network-wifi",
+        "network": "ms-settings:network",
+        "display": "ms-settings:display",
+        "sound": "ms-settings:sound",
+        "bluetooth": "ms-settings:bluetooth",
+        "battery": "ms-settings:batterysaver",
+        "power": "ms-settings:powersleep",
+        "apps": "ms-settings:appsfeatures",
+        "update": "ms-settings:windowsupdate",
+        "storage": "ms-settings:storagesense",
+    }
+    p = page.strip().lower()
+    uri = page_map.get(p, f"ms-settings:{p}")
+    os.startfile(uri)
+    return f"Opened Windows settings: {p} ({uri})."
+
+
+@tool("battery_telemetry", "Get detailed laptop battery health, charge state, and power details.")
+def battery_telemetry_tool() -> str:
+    bat = psutil.sensors_battery()
+    if not bat:
+        return "Laptop is running on direct AC power (no battery detected)."
+    status = "Charging ⚡" if bat.power_plugged else "Discharging 🔋"
+    time_left = ""
+    if bat.secsleft > 0 and not bat.power_plugged:
+        hrs = bat.secsleft // 3600
+        mins = (bat.secsleft % 3600) // 60
+        time_left = f" (Estimated {hrs}h {mins}m remaining)"
+    return f"BATTERY TELEMETRY: {bat.percent:.0f}% | Status: {status}{time_left}"
+
+
 CATEGORIES = {
     "Stark Protocols (V6)": ["gaming_protocol", "coding_protocol", "clean_slate_protocol", "stark_diagnostics"],
+    "Phone Calling & Cellular": ["make_phone_call", "end_phone_call", "answer_phone_call"],
+    "Social Media & Emails": ["read_social_messages", "read_phone_notifications", "read_emails"],
+    "Always-On Screen & Vision": ["always_see_pc_screen", "look_at_screen", "see_pc_screen", "see_phone_screen", "take_screenshot"],
+    "Laptop & Power Control": ["set_screen_brightness", "get_screen_brightness", "battery_telemetry", "snap_window", "switch_app", "open_settings_page"],
     "Apps and web": ["open_app", "list_apps", "open_url", "web_search", "youtube_play", "youtube_search", "spotify_search"],
     "Media and sound": ["media_control"],
     "Mouse and keyboard": ["mouse_click", "mouse_move", "scroll", "type_text", "press_key", "show_desktop", "screen_size"],
-    "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "take_screenshot", "look_at_screen", "see_pc_screen", "see_phone_screen", "clipboard", "lock_pc", "sleep_pc"],
+    "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "clipboard", "lock_pc", "sleep_pc"],
     "Python & Coding": ["execute_python", "analyze_code", "python_doc", "write_code_file"],
     "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "toggle_phone_flashlight", "vibrate_phone", "speak_on_phone", "scan_network_devices", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "switch_phone_to_wifi", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
     "System and files": ["system_info", "get_time", "list_processes", "list_dir", "read_file", "open_path"],

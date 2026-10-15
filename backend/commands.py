@@ -227,6 +227,52 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
         return Plan(steps=[("scan_network_devices", {"force": True})],
                     say=lambda r: r[0], name="scan_network")
 
+    # ------------------------------------------------------------------------- Phone Calls (V6)
+    call_m = re.search(r"\b(?:call|phone|dial|make a call to)\s+([\+0-9\s\-]{4,20})\b|تەلەفۆن بکە بۆ\s+([\+0-9\s\-]{4,20})|پەیوەندی بکە بە\s+([\+0-9\s\-]{4,20})|اتصل بـ?\s*([\+0-9\s\-]{4,20})", text)
+    if call_m:
+        raw_num = next((g for g in call_m.groups() if g is not None), "").strip()
+        num = "".join(c for c in raw_num if c.isdigit() or c in ("+", "*", "#"))
+        if num:
+            return Plan(steps=[("make_phone_call", {"phone_number": num, "direct": True})],
+                        say=_result_say(lambda: f"پەیوەندی دەبەسترێت بە {num} لە ڕێگەی مۆبایلەکەتەوە." if lang == "ku" else f"Placing call to {num} via your phone."), name="make_phone_call")
+
+    if re.search(r"\b(?:hang up|end call|disconnect call|stop call)\b|تەلەفۆنەکە دابخەوە|پەیوەندی ببڕە|پەیوەندی کۆتایی پێبێنە|اغلق المكالمة|انهي الاتصال", text):
+        return Plan(steps=[("end_phone_call", {})],
+                    say=_result_say(lambda: "پەیوەندییەکە بڕدرا." if lang == "ku" else "Call ended."), name="end_phone_call")
+
+    if re.search(r"\b(?:answer call|pick up phone|accept call)\b|وەڵامی تەلەفۆن بدەوە|تەلەفۆن هەڵگرە|رد على المكالمة|اجب على الاتصال", text):
+        return Plan(steps=[("answer_phone_call", {})],
+                    say=_result_say(lambda: "وەڵامی پەیوەندی درایەوە." if lang == "ku" else "Answering call."), name="answer_phone_call")
+
+    # ------------------------------------------------------------------------- Social Media, Messages & Emails (V6)
+    if re.search(r"\b(?:read|check|see|inspect|get|show)\s+(?:my\s+)?(?:all\s+|new\s+|received\s+|incoming\s+)?(?:messages|texts|whatsapp|telegram|instagram|social|notifications|dms)\b|نامەکانم بخوێنەوە|نامەکان بخوێنەوە|نامەم بۆ بخوێنەوە|سەیری نامە بکە|نامەی نوێ هەیە|سەیری واتساپ بکە|سەیری تێلیگرام بکە|نۆتیفیکەیشن|ئاگادارییەکان|اقرأ رسائلي|اقرأ الرسائل|شوف الرسايل|افحص الإشعارات|رسائل الواتساب", text):
+        return Plan(steps=[("read_social_messages", {"count": 10})], say=lambda r: r[0], name="read_social_messages")
+
+    if re.search(r"\b(?:read|check|get|show)\s+(?:my\s+)?(?:all\s+|new\s+|unread\s+|received\s+)?(?:emails|mail|inbox|gmail)\b|ئیمەیڵەکانم بخوێنەوە|ئیمەیڵ بخوێنەوە|سەیری ئیمەیڵ بکە|ئیمەیڵی نوێ هەیە|نامەی ئیمەیڵ|اقرأ الإيميلات|اقرأ البريد|شوف البريد", text):
+        return Plan(steps=[("read_emails", {"count": 5, "unread_only": True})], say=lambda r: r[0], name="read_emails")
+
+    # ------------------------------------------------------------------------- Always-On Screen Awareness (V6)
+    if re.search(r"\b(?:what is|what's|see|view|look at|describe|explain)\s+(?:on\s+|at\s+)?(?:the\s+|my\s+)?(?:pc\s+|laptop\s+)?screen\b|چی لەسەر شاشەکەمە|چی لەسەر شاشەیە|سەیری شاشەکەم بکە|سەیری شاشە بکە|ئەمەی سەر شاشەم بۆ بخوێنەوە|شاشەکەم چی تێدایە|ماذا يوجد على شاشتي|شوف شاشتي|اقرأ الشاشة|شاهد الشاشة", text):
+        return Plan(steps=[("always_see_pc_screen", {})], say=lambda r: r[0], name="always_see_pc_screen")
+
+    # ------------------------------------------------------------------------- Laptop Brightness & Power Control (V6)
+    bright_set_m = re.search(r"\b(?:set\s+)?brightness\s+(?:to\s+)?(\d{1,3})\s*%?\b", text)
+    if bright_set_m:
+        val = int(bright_set_m.group(1))
+        return Plan(steps=[("set_screen_brightness", {"percent": val})],
+                    say=_result_say(lambda: f"ڕووناکی شاشە خرایە سەر {val}%." if lang == "ku" else f"Screen brightness set to {val}%."), name="set_brightness")
+
+    if re.search(r"\b(?:increase brightness|brightness up)\b|ڕووناکی شاشە زیاد بکە|رفع إضاءة الشاشة", text):
+        return Plan(steps=[("set_screen_brightness", {"percent": 90})],
+                    say=_result_say(lambda: "ڕووناکی شاشە بەرز کرایەوە." if lang == "ku" else "Screen brightness increased."), name="brightness_up")
+
+    if re.search(r"\b(?:decrease brightness|brightness down|dim screen)\b|ڕووناکی شاشە کەم بکەوە|تقليل إضاءة الشاشة", text):
+        return Plan(steps=[("set_screen_brightness", {"percent": 40})],
+                    say=_result_say(lambda: "ڕووناکی شاشە کەم کرایەوە." if lang == "ku" else "Screen brightness dimmed."), name="brightness_down")
+
+    if re.search(r"\b(?:laptop battery|battery health|battery percentage|power status)\b|پاتری کۆمپیوتەر|پاتری لاپتۆپ|شحن اللابتوب", text):
+        return Plan(steps=[("battery_telemetry", {})], say=lambda r: r[0], name="battery_telemetry")
+
     # Phone unlock (with optional PIN or automatic remembered PIN)
     pin_m = re.search(r"\b(?:pin|pass|passcode|کۆدی|کۆد)?\s*([0-9]{4,8})\b", text)
     pin_found = pin_m.group(1) if pin_m else ""

@@ -198,12 +198,100 @@ def get_saved_phones_list() -> list[dict[str, Any]]:
             "model": info.get("model") or "Android Device",
             "has_pin": bool(pin),
             "masked_pin": "••••" if pin else "",
+            "pin_length": len(pin) if pin else 0,
             "connection_type": info.get("connection_type", "usb"),
             "auto_unlock": info.get("auto_unlock", True),
             "last_connected": info.get("last_connected", 0),
         })
     result.sort(key=lambda x: x["last_connected"], reverse=True)
     return result
+
+
+def get_saved_phone_details(serial: str) -> dict[str, Any] | None:
+    """Returns detailed phone configuration including editable PIN for the owner."""
+    data = load_saved_phones()
+    clean_serial = serial.strip()
+    devices = data.get("devices", {})
+    if clean_serial in devices:
+        d = dict(devices[clean_serial])
+        return d
+    return None
+
+
+def update_saved_phone(
+    serial: str,
+    model: str | None = None,
+    pin: str | None = None,
+    connection_type: str | None = None,
+    auto_unlock: bool | None = None,
+    new_serial: str | None = None,
+) -> dict[str, Any]:
+    """Updates existing saved phone's model, PIN, connection type, or serial."""
+    clean_serial = serial.strip()
+    if not clean_serial:
+        return {"ok": False, "error": "Serial is required to update a phone."}
+
+    with _SAVED_PHONES_LOCK:
+        data = load_saved_phones()
+        devices = data.setdefault("devices", {})
+
+        if clean_serial not in devices:
+            return {"ok": False, "error": f"Phone with serial '{clean_serial}' not found in saved list."}
+
+        phone_entry = devices[clean_serial]
+
+        if model is not None:
+            phone_entry["model"] = model.strip() or phone_entry.get("model", "Android Device")
+        if pin is not None:
+            clean_pin = pin.strip()
+            phone_entry["pin"] = clean_pin
+            phone_entry["has_pin"] = bool(clean_pin)
+            if clean_pin:
+                data["last_unlocked_pin"] = clean_pin
+        if connection_type is not None:
+            valid_types = ("usb", "wifi", "cellular", "any")
+            chosen = connection_type.strip().lower()
+            phone_entry["connection_type"] = chosen if chosen in valid_types else "usb"
+        if auto_unlock is not None:
+            phone_entry["auto_unlock"] = bool(auto_unlock)
+
+        # Handle serial rename if requested
+        if new_serial and new_serial.strip() != clean_serial:
+            target_serial = new_serial.strip()
+            phone_entry["serial"] = target_serial
+            devices[target_serial] = phone_entry
+            del devices[clean_serial]
+            clean_serial = target_serial
+
+        phone_entry["last_connected"] = time.time()
+
+        try:
+            SAVED_PHONES_FILE.parent.mkdir(parents=True, exist_ok=True)
+            SAVED_PHONES_FILE.write_text(json.dumps(data, indent=2), encoding="utf-8")
+            return {"ok": True, "device": phone_entry}
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+
+
+def add_saved_phone(
+    serial: str,
+    model: str = "",
+    pin: str = "",
+    connection_type: str = "usb",
+    auto_unlock: bool = True,
+) -> dict[str, Any]:
+    """Manually adds a new phone with specified model name, PIN, and connection type."""
+    clean_serial = serial.strip()
+    if not clean_serial:
+        return {"ok": False, "error": "Phone Serial or IP address is required."}
+
+    return save_phone_memory(
+        serial=clean_serial,
+        pin=pin,
+        model=model or clean_serial,
+        connection_type=connection_type,
+        auto_unlock=auto_unlock,
+    )
 
 
 def delete_saved_phone(serial: str) -> bool:
@@ -619,6 +707,99 @@ def speak_on_phone(text: str) -> dict[str, Any]:
         "message": f"Speak requested: {text}",
     })
     return {"ok": True, "message": f"Requested phone to speak: '{text}'."}
+
+
+def make_phone_call(phone_number: str, direct: bool = True, serial: str = "") -> dict[str, Any]:
+    """Places a phone call to specified number using connected Android phone via ADB.
+
+    If direct=True, executes android.intent.action.CALL to place call immediately.
+    If direct=False, opens the phone dialer with number filled (android.intent.action.DIAL).
+    """
+    clean_num = "".join(c for c in phone_number if c.isdigit() or c in ("+", "*", "#"))
+    if not clean_num:
+        return {"ok": False, "error": "Invalid phone number provided."}
+
+    adb = find_adb()
+    adb_devs = get_adb_devices() if adb else []
+
+    if not adb or not adb_devs:
+        return {
+            "ok": False,
+            "error": "No Android phone connected via ADB. Please connect your phone via USB or Wi-Fi to make phone calls."
+        }
+
+    target = serial.strip() or adb_devs[0]["serial"]
+
+    # Wake screen first
+    subprocess.run([adb, "-s", target, "shell", "input", "keyevent", "224"],
+                   capture_output=True, timeout=5, check=False,
+                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    time.sleep(0.3)
+
+    action = "android.intent.action.CALL" if direct else "android.intent.action.DIAL"
+    cmd = [adb, "-s", target, "shell", "am", "start", "-a", action, "-d", f"tel:{clean_num}"]
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10, check=False,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        out = (proc.stdout or proc.stderr or "").strip()
+
+        # If CALL action was blocked by security permission, gracefully fall back to DIAL
+        if "SecurityException" in out or "permission" in out.lower() or proc.returncode != 0:
+            fallback_cmd = [adb, "-s", target, "shell", "am", "start", "-a", "android.intent.action.DIAL", "-d", f"tel:{clean_num}"]
+            fallback_proc = subprocess.run(fallback_cmd, capture_output=True, text=True, timeout=10, check=False,
+                                           creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+            return {
+                "ok": fallback_proc.returncode == 0,
+                "action": "dial",
+                "phone_number": clean_num,
+                "message": f"Opened phone dialer with number {clean_num}. Press call on your phone.",
+            }
+
+        return {
+            "ok": True,
+            "action": "call" if direct else "dial",
+            "phone_number": clean_num,
+            "message": f"Successfully initiated call to {clean_num} on your phone.",
+        }
+    except Exception as exc:
+        return {"ok": False, "error": f"Failed to place call: {exc}"}
+
+
+def end_phone_call(serial: str = "") -> dict[str, Any]:
+    """Hangs up or terminates an active phone call on the connected Android phone."""
+    adb = find_adb()
+    adb_devs = get_adb_devices() if adb else []
+    if not adb or not adb_devs:
+        return {"ok": False, "error": "No phone connected via ADB to end call."}
+
+    target = serial.strip() or adb_devs[0]["serial"]
+    try:
+        # KEYCODE_ENDCALL is keyevent 6
+        subprocess.run([adb, "-s", target, "shell", "input", "keyevent", "6"],
+                       capture_output=True, timeout=5, check=False,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return {"ok": True, "message": "Dispatched end call (hang up) signal to phone."}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+def answer_phone_call(serial: str = "") -> dict[str, Any]:
+    """Answers an incoming phone call on the connected Android phone."""
+    adb = find_adb()
+    adb_devs = get_adb_devices() if adb else []
+    if not adb or not adb_devs:
+        return {"ok": False, "error": "No phone connected via ADB to answer call."}
+
+    target = serial.strip() or adb_devs[0]["serial"]
+    try:
+        # KEYCODE_CALL is keyevent 5, or input keyevent KEYCODE_HEADSETHOOK (79)
+        subprocess.run([adb, "-s", target, "shell", "input", "keyevent", "5"],
+                       capture_output=True, timeout=5, check=False,
+                       creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return {"ok": True, "message": "Dispatched answer call signal to phone."}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
 
 
 # --------------------------------------------------------------------------- Wake-on-LAN (WoL) & Sleep

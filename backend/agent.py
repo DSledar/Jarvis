@@ -19,7 +19,7 @@ from typing import Any, AsyncIterator
 import httpx
 
 if __package__:
-    from . import commands, memory, settings, tools
+    from . import commands, memory, screen_awareness, settings, tools
 else:
     import commands  # type: ignore
     import memory  # type: ignore
@@ -46,6 +46,10 @@ CAPABILITIES & KNOWLEDGE:
 - Complete Production Code: NEVER truncate code, never use placeholders like '# TODO' or '# rest of code here'. Always write 100% complete, functional code from start to finish.
 - Code Tools: Use `execute_python` to test and run Python code. Use `write_code_file` to save complete scripts directly to disk. Use `analyze_code` to inspect code and `python_doc` to lookup Python documentation.
 - Window Management: Use `minimize_window` to minimize windows, `maximize_window` to make windows full-size, and `restore_window` or `close_window`.
+- Phone Calling & Cellular: You can place phone calls to any number with `make_phone_call(phone_number=..., direct=True)`, end calls with `end_phone_call`, and answer calls with `answer_phone_call`.
+- Social Media & Email Reader: You can read incoming messages from WhatsApp, Telegram, Instagram, Messenger, and SMS with `read_social_messages`, inspect raw phone notifications with `read_phone_notifications`, and read mailbox emails with `read_emails`.
+- Always-On Screen Awareness: You can see what's on the user's laptop screen at any second with `always_see_pc_screen` or `look_at_screen`. You are continuously informed of the active focused window and open programs.
+- Total Laptop & Power Control: You have total control over the laptop hardware. Use `set_screen_brightness` to change display brightness (0-100%), `battery_telemetry` to check battery percentage and charge state, `snap_window` to snap windows, `switch_app` to Alt+Tab between apps, and `open_settings_page` to open Windows settings directly.
 - Phone Unlock & Full Remote Control: You can unlock the user's phone with `unlock_phone(pin=...)`, toggle phone flashlight with `toggle_phone_flashlight`, vibrate phone with `vibrate_phone`, speak on phone with `speak_on_phone`, ring phone with `ring_phone`, check battery and connection status with `get_phone_status`, capture phone screen with `see_phone_screen`, and execute ADB commands with `phone_adb`.
 - Wake-on-LAN (WoL): You can wake a sleeping PC over the network with `wake_pc_lan`.
 - Mobile & PC Screen Viewing: You can inspect the PC display screen with `see_pc_screen` and inspect the mobile screen with `see_phone_screen` or `take_screenshot`.
@@ -302,7 +306,9 @@ async def stream_jarvis(message: str, session_id: str, image: str | None = None)
 
     facts = memory.list_facts()
     facts_txt = ("\nTHINGS YOU KNOW ABOUT THE USER:\n- " + "\n- ".join(facts)) if facts else ""
+    screen_ctx = screen_awareness.format_screen_context_for_prompt()
     system = PERSONA.format(os=platform.system(), today=datetime.datetime.now().strftime("%A %d %B %Y, %H:%M"), facts=facts_txt)
+    system += f"\n\n{screen_ctx}" 
 
     if image:
         vis_feed = _inspect_image_quick(image)

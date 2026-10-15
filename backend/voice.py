@@ -140,7 +140,8 @@ async def synthesize_speech(
         if cached_wav.is_file() and cached_wav.stat().st_size > 200:
             return cached_wav.read_bytes(), "audio/wav"
         try:
-            safe_txt = cleaned.replace("'", " ").replace('"', " ")
+            import base64
+            b64_txt = base64.b64encode(cleaned.encode("utf-8")).decode("ascii")
             ps_script = (
                 "Add-Type -AssemblyName System.Speech; "
                 "$synth = New-Object System.Speech.Synthesis.SpeechSynthesizer; "
@@ -151,7 +152,8 @@ async def synthesize_speech(
                 "if ($uk) { $synth.SelectVoice($uk.Name) }; "
                 "$synth.Rate = 1; "
                 f"$synth.SetOutputToWaveFile('{cached_wav}'); "
-                f"$synth.Speak('{safe_txt}'); "
+                f"$txt = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('{b64_txt}')); "
+                "$synth.Speak($txt); "
                 "$synth.Dispose();"
             )
             await asyncio.to_thread(

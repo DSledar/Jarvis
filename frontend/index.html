@@ -409,7 +409,10 @@
             <div style="margin-top:14px; padding-top:10px; border-top:1px solid var(--line-soft);">
               <div style="display:flex; justify-content:space-between; align-items:center;">
                 <span style="font-size:13.5px; font-weight:600; color:var(--cyan);">🧠 Remembered Phones & PINs:</span>
-                <button class="ghost mini" id="btnRefreshSavedPhones" type="button">Refresh</button>
+                <div style="display:flex; gap:6px;">
+                  <button class="ghost mini" id="btnAddPhoneManual" type="button" style="color:var(--cyan); border-color:var(--cyan-dim);">➕ Add Phone</button>
+                  <button class="ghost mini" id="btnRefreshSavedPhones" type="button">Refresh</button>
+                </div>
               </div>
               <div id="savedPhonesList" style="margin-top:8px; display:flex; flex-direction:column; gap:6px; font-size:13px;">
                 <span class="muted">Loading saved devices…</span>
@@ -426,6 +429,37 @@
               <button class="ghost" id="btnPhoneKeyPower" data-key="power" type="button">🔒 Lock/Power</button>
               <button class="ghost" id="btnPhoneKeyVolUp" data-key="volup" type="button">🔊 Vol +</button>
               <button class="ghost" id="btnPhoneKeyVolDown" data-key="voldown" type="button">🔉 Vol -</button>
+            </div>
+
+            <!-- Card: Phone Calls & Cellular Dialer (V6) -->
+            <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--line-soft);">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 style="margin:0; font-size:14.5px; color:var(--cyan);">📞 Make Phone Call (Cellular / ADB)</h4>
+                <span class="tunnel-status-badge active" style="font-size:11px;">Direct Call</span>
+              </div>
+              <p class="muted" style="margin:4px 0 8px; font-size:12.5px;">Place phone calls directly through your plugged-in or Wi-Fi Android phone:</p>
+              <form class="inline-form" id="phoneCallForm" style="display:flex; gap:8px; flex-wrap:wrap;">
+                <input id="phoneCallNumber" type="tel" placeholder="Phone number (e.g. 0750XXXXXXX or +964...)" style="flex:1; min-width:200px;" />
+                <button class="primary" type="submit" id="btnMakeCall">📞 Call</button>
+                <button class="ghost" type="button" id="btnDialOnly">📲 Dial</button>
+                <button class="danger" type="button" id="btnEndCall">📵 Hang Up</button>
+                <button class="ghost" type="button" id="btnAnswerCall" style="color:var(--green); border-color:var(--green);">🟢 Answer</button>
+              </form>
+            </div>
+
+            <!-- Card: Social Messages & Notifications (V6) -->
+            <div style="margin-top:16px; padding-top:12px; border-top:1px solid var(--line-soft);">
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <h4 style="margin:0; font-size:14.5px; color:var(--cyan);">💬 Social Messages, WhatsApp & Emails</h4>
+                <div style="display:flex; gap:6px;">
+                  <button class="ghost mini" id="btnFetchSocialMessages" type="button">📨 Read Messages</button>
+                  <button class="ghost mini" id="btnFetchEmails" type="button">📧 Read Emails</button>
+                </div>
+              </div>
+              <p class="muted" style="margin:4px 0 8px; font-size:12.5px;">Inspect incoming WhatsApp, Telegram, Instagram, Messenger, and Gmail messages:</p>
+              <div id="socialMessagesList" style="margin-top:8px; display:flex; flex-direction:column; gap:6px; max-height:180px; overflow-y:auto; font-size:12.5px;">
+                <span class="muted">Click "Read Messages" or ask JARVIS: "Read my received messages".</span>
+              </div>
             </div>
           </section>
         </div>
@@ -761,6 +795,52 @@ git push -u origin main</pre>
     </div>
   </div>
 </div>
+
+<!-- Modal: Edit / Add Saved Phone (V6) -->
+<div id="modalPhoneEditor" class="modal hidden" role="dialog" aria-label="Edit Saved Phone">
+  <div class="modal-card" style="max-width:480px; border:1px solid var(--cyan-dim);">
+    <div class="modal-head" style="display:flex; justify-content:space-between; align-items:center;">
+      <h3 id="phoneEditorTitle" style="margin:0; color:var(--cyan);">✏️ Edit Saved Phone</h3>
+      <button type="button" class="icon-btn" id="btnClosePhoneEditor">Close</button>
+    </div>
+    <form id="phoneEditorForm" style="display:flex; flex-direction:column; gap:12px; margin-top:14px;">
+      <input type="hidden" id="phoneEditorOriginalSerial" />
+      <div>
+        <label style="font-size:12px; color:var(--cyan); display:block; margin-bottom:4px; font-weight:600;">Device Serial or Wi-Fi IP:</label>
+        <input id="phoneEditorSerial" type="text" placeholder="e.g. GIBEPF4TFUEE79GA or 192.168.1.50:5555" required style="width:100%; box-sizing:border-box;" />
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--cyan); display:block; margin-bottom:4px; font-weight:600;">Phone Model / Friendly Name:</label>
+        <input id="phoneEditorModel" type="text" placeholder="e.g. Poco 2412DPC0AG, Infinix X6885" required style="width:100%; box-sizing:border-box;" />
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--cyan); display:block; margin-bottom:4px; font-weight:600;">Screen Lock PIN / Passcode:</label>
+        <input id="phoneEditorPin" type="text" placeholder="e.g. 2910 or 0000" style="width:100%; box-sizing:border-box;" />
+        <small class="muted" style="font-size:11px; display:block; margin-top:3px;">Saved securely on your PC for one-click hardware auto-unlock.</small>
+      </div>
+      <div>
+        <label style="font-size:12px; color:var(--cyan); display:block; margin-bottom:4px; font-weight:600;">Connection Type:</label>
+        <select id="phoneEditorType" style="width:100%; padding:8px; background:#04121a; color:var(--text); border:1px solid var(--line-soft); border-radius:4px;">
+          <option value="usb">🔌 USB Direct Cable</option>
+          <option value="wifi">📶 Wi-Fi Wireless ADB (Port 5555)</option>
+          <option value="cellular">📡 Worldwide Cellular / Tunnel</option>
+          <option value="any">⚡ Any Available Connection</option>
+        </select>
+      </div>
+      <div style="display:flex; align-items:center; gap:8px;">
+        <label style="display:flex; align-items:center; gap:6px; cursor:pointer; font-size:13px;" class="muted">
+          <input type="checkbox" id="phoneEditorAutoUnlock" checked style="width:auto; margin:0;" />
+          Enable instant Auto-Unlock for this phone
+        </label>
+      </div>
+      <div class="row-btns" style="display:flex; justify-content:flex-end; gap:8px; margin-top:10px;">
+        <button class="ghost" type="button" id="btnCancelPhoneEditor">Cancel</button>
+        <button class="primary" type="submit" id="btnSavePhoneEditor">💾 Save Phone</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <div id="toast" class="toast hidden" role="status"></div>
 
 <!-- ============================== icons ============================== -->

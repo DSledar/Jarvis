@@ -6,6 +6,7 @@ import ipaddress
 import json
 import os
 import platform
+import re
 import socket
 import time
 from pathlib import Path
@@ -23,8 +24,8 @@ FRONTEND = ROOT / "frontend"
 load_dotenv(ROOT / ".env")
 
 if __package__:
-    from . import background_daemon, devices, memory, phone_control, remote, settings, tools, voice
-    from .agent import STATE, diagnose, stream_jarvis, test_brain, warmup
+    from . import background_daemon, devices, memory, phone_control, remote, screen_awareness, settings, social_reader, tools, voice
+    from .agent import STATE, diagnose, run_jarvis, stream_jarvis, test_brain, warmup
 else:
     import background_daemon  # type: ignore
     import devices  # type: ignore
@@ -32,9 +33,11 @@ else:
     import memory  # type: ignore
     import phone_control  # type: ignore
     import remote  # type: ignore
+    import screen_awareness  # type: ignore
     import settings  # type: ignore
+    import social_reader  # type: ignore
     import tools  # type: ignore
-    from agent import STATE, diagnose, stream_jarvis, test_brain, warmup  # type: ignore
+    from agent import STATE, diagnose, run_jarvis, stream_jarvis, test_brain, warmup  # type: ignore
 
 app = FastAPI(title="JARVIS Free Agent V6", version="6.0.0")
 app.add_middleware(
@@ -139,6 +142,10 @@ async def asset(filename: str) -> FileResponse:
 @app.on_event("startup")
 async def _startup() -> None:
     asyncio.create_task(warmup())
+    try:
+        background_daemon.start_background_watchers()
+    except Exception as exc:
+        print(f"[JARVIS DAEMON] Startup watcher error: {exc}")
 
 
 @app.get("/api/status")
@@ -183,6 +190,11 @@ async def chat_stream(payload: ChatRequest) -> StreamingResponse:
         except Exception as exc:  # noqa: BLE001
             yield json.dumps({"type": "error", "text": str(exc)}, ensure_ascii=False) + "\n"
     return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+@app.post("/api/chat")
+async def chat_standard(payload: ChatRequest) -> dict[str, Any]:
+    """Standard single-turn chat endpoint returning complete JSON response."""
+    return await run_jarvis(payload.message, payload.session_id, image=payload.image)
 
 
 @app.post("/api/history/clear")
@@ -700,16 +712,19 @@ async def phone_screen_upload_api(request: Request) -> dict:
 
 
 def _require_local_dashboard(request: Request) -> None:
-    """Phone OS-control and ADB-pairing APIs are only available to the PC dashboard itself."""
+    """Phone OS-control and ADB APIs are available from PC dashboard or local LAN with token."""
     client = request.client.host if request.client else ""
+    token = request.headers.get("x-phone-token") or request.query_params.get("token")
+    if token and devices.validate_token(token):
+        return
     try:
         addr = ipaddress.ip_address(client)
-        if addr.is_loopback:
+        if addr.is_loopback or addr.is_private:
             return
     except ValueError:
-        if client == "testclient":
+        if client in ("testclient", "localhost", "127.0.0.1"):
             return
-    raise HTTPException(status_code=403, detail="For safety, Android OS control must be used from the JARVIS dashboard on this PC (http://127.0.0.1:8000).")
+    raise HTTPException(status_code=403, detail="For safety, Android OS control must be used from the local JARVIS dashboard or an authenticated device.")
 
 
 def _validated_private_ipv4(host: str) -> str:
@@ -795,13 +810,45 @@ async def phone_saved_list_api(request: Request) -> dict[str, Any]:
     return {"ok": True, "saved_phones": saved}
 
 
+@app.get("/api/phone/saved/{serial}")
+async def phone_saved_detail_api(serial: str, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    details = await asyncio.to_thread(phone_control.get_saved_phone_details, serial)
+    if not details:
+        raise HTTPException(status_code=404, detail="Device not found in saved list.")
+    return {"ok": True, "device": details}
+
+
 @app.post("/api/phone/saved")
 async def phone_save_pin_api(payload: dict, request: Request) -> dict[str, Any]:
     _require_local_dashboard(request)
     serial = str(payload.get("serial", "")).strip()
     pin = str(payload.get("pin", "")).strip()
     model = str(payload.get("model", "")).strip()
-    res = await asyncio.to_thread(phone_control.save_phone_memory, serial, pin, model)
+    conn_type = str(payload.get("connection_type", "usb")).strip()
+    auto_unlock = bool(payload.get("auto_unlock", True))
+    res = await asyncio.to_thread(phone_control.save_phone_memory, serial, pin, model, conn_type, auto_unlock)
+    return res
+
+
+@app.put("/api/phone/saved")
+async def phone_update_saved_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    serial = str(payload.get("serial", "")).strip()
+    model = payload.get("model")
+    pin = payload.get("pin")
+    conn_type = payload.get("connection_type")
+    auto_unlock = payload.get("auto_unlock")
+    new_serial = payload.get("new_serial")
+    res = await asyncio.to_thread(
+        phone_control.update_saved_phone,
+        serial=serial,
+        model=str(model) if model is not None else None,
+        pin=str(pin) if pin is not None else None,
+        connection_type=str(conn_type) if conn_type is not None else None,
+        auto_unlock=bool(auto_unlock) if auto_unlock is not None else None,
+        new_serial=str(new_serial) if new_serial is not None else None,
+    )
     return res
 
 
@@ -861,6 +908,90 @@ async def phone_capture_request_api(request: Request) -> dict:
     _require_local_dashboard(request)
     return await asyncio.to_thread(phone_control.request_phone_screenshot)
 
+
+
+# ----------------------------------------------------------------------------- Phone Calls
+@app.post("/api/phone/call")
+async def phone_call_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    number = str(payload.get("phone_number", "")).strip()
+    direct = bool(payload.get("direct", True))
+    serial = str(payload.get("serial", "")).strip()
+    return await asyncio.to_thread(phone_control.make_phone_call, number, direct, serial)
+
+
+@app.post("/api/phone/call/end")
+async def phone_call_end_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    serial = str(payload.get("serial", "")).strip()
+    return await asyncio.to_thread(phone_control.end_phone_call, serial)
+
+
+@app.post("/api/phone/call/answer")
+async def phone_call_answer_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    serial = str(payload.get("serial", "")).strip()
+    return await asyncio.to_thread(phone_control.answer_phone_call, serial)
+
+
+# ----------------------------------------------------------------------------- Social Media, Messages & Emails
+@app.get("/api/social/messages")
+async def social_messages_api(request: Request, count: int = 12) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    return await asyncio.to_thread(social_reader.read_all_social_and_emails, count)
+
+
+@app.get("/api/social/notifications")
+async def phone_notifications_api(request: Request, count: int = 12, serial: str = "") -> dict[str, Any]:
+    _require_local_dashboard(request)
+    notifs = await asyncio.to_thread(social_reader.read_phone_notifications, count, serial)
+    return {"ok": True, "notifications": notifs, "count": len(notifs)}
+
+
+@app.get("/api/email/read")
+async def email_read_api(request: Request, count: int = 5, unread_only: bool = True) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    emails = await asyncio.to_thread(social_reader.read_direct_imap_emails, count, unread_only)
+    return {"ok": True, "emails": emails, "count": len(emails)}
+
+
+@app.get("/api/email/config")
+async def email_config_get_api(request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    cfg = social_reader.load_email_config()
+    safe = dict(cfg)
+    safe["password"] = "••••••••" if cfg.get("password") else ""
+    safe["has_password"] = bool(cfg.get("password"))
+    return {"ok": True, "config": safe}
+
+
+@app.post("/api/email/config")
+async def email_config_save_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    curr = social_reader.load_email_config()
+    pw = str(payload.get("password", "")).strip()
+    cfg = {
+        "enabled": bool(payload.get("enabled", False)),
+        "imap_server": str(payload.get("imap_server", curr.get("imap_server", "imap.gmail.com"))).strip(),
+        "port": int(payload.get("port", curr.get("port", 993))),
+        "email": str(payload.get("email", curr.get("email", ""))).strip(),
+        "password": pw if pw and pw != "••••••••" else curr.get("password", ""),
+        "use_ssl": bool(payload.get("use_ssl", True)),
+    }
+    saved = social_reader.save_email_config(cfg)
+    return {"ok": saved}
+
+
+# ----------------------------------------------------------------------------- Always-On Screen Awareness
+@app.get("/api/screen/summary")
+async def screen_summary_api() -> dict[str, Any]:
+    return await asyncio.to_thread(screen_awareness.get_current_screen_summary)
+
+
+@app.get("/api/screen/inspect")
+async def screen_inspect_api() -> dict[str, Any]:
+    report = await asyncio.to_thread(screen_awareness.analyze_screen_details)
+    return {"ok": True, "report": report}
 
 # ----------------------------------------------------------------------------- remote tunnel API
 @app.get("/api/phone/ping")

@@ -328,7 +328,9 @@ def scan_nearby_devices(force: bool = False) -> list[dict[str, Any]]:
 
         # 2. Check ADB devices if adb is available
         try:
-            adb_out = subprocess.run(["adb", "devices", "-l"], capture_output=True, text=True, timeout=3).stdout
+            from . import phone_control
+            adb_bin = phone_control.find_adb() or "adb"
+            adb_out = subprocess.run([adb_bin, "devices", "-l"], capture_output=True, text=True, timeout=5, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0)).stdout
             for line in adb_out.splitlines()[1:]:
                 parts = line.split()
                 if len(parts) >= 2 and parts[1] == "device":

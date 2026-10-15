@@ -522,6 +522,15 @@
             <button id="btnUnlockPhone" class="btn-action highlight" style="width:auto; padding:0 16px;">Unlock</button>
           </div>
         </section>
+
+        <!-- Quick Phone Dialer (V6) -->
+        <section class="panel">
+          <div class="panel-head"><h3>Phone Call & Dialer</h3></div>
+          <div style="display:flex; gap:8px;">
+            <input type="tel" id="companionCallNumber" placeholder="Phone Number to Call" style="flex:1; padding:11px; border-radius:8px; border:1px solid var(--card-border); background:#04121a; color:#fff;" />
+            <button id="btnCompanionCall" class="btn-action highlight" style="width:auto; padding:0 16px;">📞 Call</button>
+          </div>
+        </section>
       </div>
 
       <!-- TAB 4: POWER & WAKE-ON-LAN -->
@@ -912,7 +921,7 @@
         if (navigator.vibrate) navigator.vibrate([300, 100, 300]);
       } else if (ev.type === 'snap_photo') {
         toast('📸 JARVIS requested camera photo!');
-        document.getElementById('inputPhoto')?.click();
+        document.getElementById('photoInput')?.click();
       } else if (ev.type === 'take_screenshot') {
         toast('📱 JARVIS requested screen snapshot!');
         shareMobileScreen();
