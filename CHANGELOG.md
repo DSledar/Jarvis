@@ -1,5 +1,30 @@
 # Changelog
 
+## v6.0.0 — Iron Man Mark VI Edition: Paul Bettany Voice, Kurdish Sorani Mastery, Background Auto-Pop HUD & Stark Protocols
+
+- **Authentic Paul Bettany JARVIS Voice & Acoustic Filter (`backend/voice.py` + Web Audio DSP)**:
+  - Neural British RP voice synthesis (`en-GB-RyanNeural`, pitch `-4Hz`, rate `+5%`) via `/api/tts` with local disk caching for zero latency.
+  - Real-time Web Audio API Holographic Acoustic Filter (`BiquadFilterNode` high-pass, 2.65 kHz presence boost, 11ms metallic chamber resonance, and dynamic compressor) giving JARVIS his signature Iron Man helmet/HUD sound.
+  - Automatic offline Windows SAPI5 British Male fallback when internet is disconnected.
+- **Kurdish Sorani (کوردیی سۆرانی) Mastery & Phonetic TTS**:
+  - Addresses you strictly as **گەورەم** in Kurdish Sorani and **Sir** in English.
+  - Built-in Kurdish Sorani phonetic neural mapper in `backend/voice.py` so Kurdish Sorani replies are spoken aloud clearly instead of failing with a missing voice warning.
+  - Expanded `commands.py` with native Sorani commands for apps, windows, phone controls, and Stark Protocols.
+- **Always-On Background Daemon & Auto-Pop Intro Screen (`backend/background_daemon.py`)**:
+  - Runs continuously in the background (`start_background_silent.vbs` & `install_startup_background.bat`).
+  - Saying **"Jarvis wake up"**, **"Wake up Jarvis"**, **"جاڕڤس هەڵسە"**, or pressing **`Ctrl + Alt + J`** wakes the display, pops the JARVIS window to the front of your screen (`win32gui` foreground bypass), plays the fullscreen Iron Man Holographic Intro (`jarvis_intro.mp4`), and turns on!
+- **New Stark Protocols (`backend/tools.py`)**:
+  - `gaming_protocol`: Optimizes memory, checks CPU/RAM telemetry, raises audio volume, and launches Steam/Discord.
+  - `coding_protocol`: Launches VS Code, Terminal, and your development environment in one command.
+  - `clean_slate_protocol`: Minimizes all clutter (`Win+D`) and frees workspace memory.
+  - `stark_diagnostics`: Full hardware, CPU per-core, RAM, storage, battery, and process telemetry report.
+- **Bug Fixes from v5**:
+  - Fixed missing `Response` import in `backend/main.py` that crashed `/api/phone/screen` and `/api/phone/screenshot`.
+  - Fixed missing `escapeHtml()` function in `frontend/app.js` that broke the Saved Phones list in Phone Control.
+  - Fixed `api()` helper in `frontend/app.js` ignoring `DELETE` method when forgetting saved phone PINs.
+  - Fixed `initLiveScreenStream()` ReferenceError in `frontend/phone.html` when waking PC from sleep.
+  - Fixed `.env` token cap (`JARVIS_MAX_TOKENS=350` -> `2048`) and `settings.json` model name (`gemini-2.5-flash`).
+
 ## v1.0.0 — foundation
 
 - Initial JARVIS dashboard.

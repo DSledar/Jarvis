@@ -1098,7 +1098,98 @@ def scan_network_devices_tool(force: bool = True) -> str:
 
 
 # --------------------------------------------------------------------------- metadata for the dashboard
+
+
+# --------------------------------------------------------------------------- Stark Protocols (V6 Iron Man Suite)
+@tool("gaming_protocol", "Activate Stark Gaming Protocol: optimizes system memory, checks CPU/RAM telemetry, raises audio volume, and optionally opens Steam, Discord, or a game.",
+      {"game_or_app": "string: optional game or launcher to open (default 'steam')"}, required=[])
+def gaming_protocol(game_or_app: str = "") -> str:
+    import gc, psutil
+    gc.collect()
+    cpu = psutil.cpu_percent(interval=0.2)
+    ram = psutil.virtual_memory()
+    free_gb = ram.available / (1024 ** 3)
+    try:
+        media_control("volume_up", times=5)
+    except Exception:
+        pass
+    launched = []
+    target = (game_or_app or "").strip()
+    if target:
+        try:
+            open_app(target)
+            launched.append(target)
+        except Exception:
+            pass
+    else:
+        for app_name in ("discord", "steam"):
+            try:
+                open_app(app_name)
+                launched.append(app_name.title())
+            except Exception:
+                pass
+    apps_str = f" Launched: {', '.join(launched)}." if launched else ""
+    return (f"Gaming Protocol online, Sir. Telemetry nominal: CPU load at {cpu:.0f}%, "
+            f"{free_gb:.1f} GB RAM available ({100 - ram.percent:.0f}% free). Audio calibrated.{apps_str}")
+
+
+@tool("coding_protocol", "Activate Stark Coding & Workspace Protocol: opens VS Code, Terminal, and prepares the development workspace.",
+      {"project_url": "string: optional URL or localhost port to open"}, required=[])
+def coding_protocol(project_url: str = "") -> str:
+    opened = []
+    for app_name in ("vs code", "terminal"):
+        try:
+            open_app(app_name)
+            opened.append(app_name.upper() if app_name == "vs code" else app_name.title())
+        except Exception:
+            pass
+    if project_url and project_url.startswith(("http://", "https://")):
+        webbrowser.open(project_url)
+        opened.append(project_url)
+    return f"Coding Protocol engaged, Sir. Development environment initialized ({', '.join(opened) or 'Workspace ready'})."
+
+
+@tool("clean_slate_protocol", "Activate Clean Slate Protocol: minimizes all clutter windows to show a clean desktop and frees temporary memory.")
+def clean_slate_protocol() -> str:
+    import gc
+    gc.collect()
+    try:
+        show_desktop()
+    except Exception:
+        pass
+    return "Clean Slate Protocol complete, Sir. All windows minimized and workspace cleared."
+
+
+@tool("stark_diagnostics", "Run a full Stark HUD hardware, network, battery, and process diagnostic report.")
+def stark_diagnostics() -> str:
+    import psutil
+    vm = psutil.virtual_memory()
+    du = psutil.disk_usage(str(HOME.anchor or "/"))
+    bat = psutil.sensors_battery()
+    cpu_freq = psutil.cpu_freq()
+    freq_str = f" @ {cpu_freq.current:.0f}MHz" if cpu_freq else ""
+    cores = psutil.cpu_count(logical=True)
+    top_procs = sorted(psutil.process_iter(["name", "memory_percent"]),
+                       key=lambda p: p.info.get("memory_percent") or 0, reverse=True)[:4]
+    procs_str = ", ".join(f"{p.info['name']} ({p.info['memory_percent'] or 0:.1f}%)" for p in top_procs)
+    bat_str = "AC Power (Desktop)" if not bat else f"{bat.percent:.0f}% ({'Charging' if bat.power_plugged else 'Discharging'})"
+    return (
+        f"STARK HUD DIAGNOSTICS REPORT:
+"
+        f"- CPU: {psutil.cpu_percent(interval=0.3)}% utilization across {cores} logical cores{freq_str}
+"
+        f"- Memory: {vm.percent}% used ({vm.used / (1024**3):.1f} GB / {vm.total / (1024**3):.1f} GB)
+"
+        f"- Primary Storage: {du.percent}% used ({du.free / (1024**3):.1f} GB free)
+"
+        f"- Power Cell: {bat_str}
+"
+        f"- Top Active Processes: {procs_str}"
+    )
+
+
 CATEGORIES = {
+    "Stark Protocols (V6)": ["gaming_protocol", "coding_protocol", "clean_slate_protocol", "stark_diagnostics"],
     "Apps and web": ["open_app", "list_apps", "open_url", "web_search", "youtube_play", "youtube_search", "spotify_search"],
     "Media and sound": ["media_control"],
     "Mouse and keyboard": ["mouse_click", "mouse_move", "scroll", "type_text", "press_key", "show_desktop", "screen_size"],

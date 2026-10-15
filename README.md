@@ -1,4 +1,4 @@
-# JARVIS Free Agent v4
+# JARVIS Free Agent V6 (Iron Man Mark VI Edition)
 
 A Windows command center that controls your PC with free AI. No OpenAI key, no credits, no card.
 

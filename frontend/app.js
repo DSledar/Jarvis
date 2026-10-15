@@ -19,8 +19,15 @@ const state = {
 };
 LS.set('jarvis_session_id', state.sessionId);
 
-async function api(path, body) {
-  const res = await fetch(path, body === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+function escapeHtml(str) {
+  return String(str ?? '').replace(/[&<>"']/g, (m) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
+}
+
+async function api(path, body, method) {
+  const opts = body === undefined && !method
+    ? {}
+    : { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: body !== undefined ? JSON.stringify(body) : undefined };
+  const res = await fetch(path, opts);
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.detail || `Server error ${res.status}`);
   return data;
@@ -223,8 +230,8 @@ function normalizePhrase(text) {
 function isWakePhrase(raw) {
   const t = normalizePhrase(raw);
   if (!t) return false;
-  if (/\b(wake\s*up(\s+jarvis|\s+buddy)?|jarvis\s+wake\s*up|wake\s+jarvis|boot\s*up\s+jarvis|online\s+jarvis|hey\s+jarvis|hi\s+jarvis)\b/i.test(t)) return true;
-  if (/(?:هەڵسە|هەستە|بەخەبەر\s*وەرە|بەخەبەر\s*بێ|وەخەبەر\s*وەرە)(?:\s+جارڤیس)?/i.test(t)) return true;
+  if (/\b(wake\s*up(\s+jarvis|\s+buddy)?|jarvis\s+wake\s*up|wake\s+jarvis|boot\s*up(\s+jarvis)?|online\s+jarvis|hey\s+jarvis|hi\s+jarvis|jarvis\s+online|turn\s+on\s+jarvis)\b/i.test(t)) return true;
+  if (/(?:هەڵسە|هەستە|بەخەبەر\s*وەرە|بەخەبەر\s*بێ|وەخەبەر\s*وەرە|جاڕڤس\s*هەڵسە|جارڤیس\s*هەڵسە|هەڵسە\s*جاڕڤس)(?:\s+جارڤیس|\s+جاڕڤس)?/i.test(t)) return true;
   if (/(?:استيقظ|اصحى|استفق)(?:\s+جارفيس|\s+جارفس)?/i.test(t)) return true;
   if (/\b(wek\s*up|waik\s*up|wake\s*ap|jarves\s*wake)\b/i.test(t)) return true;
   return false;
@@ -256,6 +263,12 @@ function triggerWakeUpSequence(opts = true) {
   const options = (typeof opts === 'boolean') ? { playVideo: opts, isStartup: false } : (opts || {});
   const playVideo = options.playVideo !== false;
   const isStartup = Boolean(options.isStartup);
+
+  // Pop JARVIS window to the front of Windows desktop if woken from background
+  if (!isStartup) {
+    fetch('/api/window/pop_to_front', { method: 'POST' }).catch(() => {});
+    try { window.focus(); } catch {}
+  }
 
   state.isSleeping = false;
   state.handsFree = true;
@@ -653,6 +666,10 @@ refreshStatus(); refreshDiagnose(); setInterval(refreshStatus, 3000); setInterva
 /* ------------------------------------------------------------------ quick action tiles */
 const TILES = [
   ['Wake JARVIS', 'i-bolt', () => triggerWakeUpSequence(true)],
+  ['Gaming Mode', 'i-bolt', () => sendChat('Activate gaming protocol')],
+  ['Coding Mode', 'i-code', () => sendChat('Activate coding protocol')],
+  ['Diagnostics', 'i-chip', () => sendChat('Run diagnostics')],
+  ['Clean Slate', 'i-window', () => sendChat('Clean slate protocol')],
   ['Sleep Mode', 'i-moon', () => triggerSleepMode()],
   ['Live Cam', 'i-camera', () => openLiveCamVision()],
   ['Spotify', 'i-music', () => runTool('open_app', { name: 'spotify' }, 'Spotify')],
@@ -1967,12 +1984,41 @@ function syncLangSelect() {
   if (!sel.options.length) { LANGS.forEach(([v, n]) => sel.add(new Option(n, v))); sel.addEventListener('change', () => { state.voiceLang = sel.value; LS.set('jarvis_lang', sel.value); }); }
   sel.value = state.voiceLang || 'en-US';
 }
+let currentJarvisAudio = null;
+
 function pickVoice(lang) {
-  const voices = speechSynthesis.getVoices(), base = lang.split('-')[0];
-  const pick = (l) => voices.find((v) => v.lang === l) || voices.find((v) => v.lang.toLowerCase().startsWith(l.split('-')[0].toLowerCase()));
-  return pick(lang) || null;
+  if (!window.speechSynthesis) return null;
+  const voices = speechSynthesis.getVoices() || [];
+  if (!voices.length) return null;
+  const isKurdishOrArabic = lang.toLowerCase().startsWith('ckb') || lang.toLowerCase().startsWith('ar');
+  if (isKurdishOrArabic) {
+    return (
+      voices.find((v) => /ckb|kurd/i.test(v.lang + ' ' + v.name)) ||
+      voices.find((v) => /ar-iq|bassel|hamed|naayf/i.test(v.lang + ' ' + v.name)) ||
+      voices.find((v) => v.lang.toLowerCase().startsWith('ar')) ||
+      voices[0]
+    );
+  }
+  // Prioritize British RP Male voices (like Paul Bettany's JARVIS: Ryan, George, Daniel, UK Male)
+  return (
+    voices.find((v) => /ryan.*natural|en-gb.*ryan/i.test(v.name + ' ' + v.lang)) ||
+    voices.find((v) => /google uk english male/i.test(v.name)) ||
+    voices.find((v) => /george|daniel|oliver|arthur/i.test(v.name) && /en-gb|uk|british/i.test(v.lang + ' ' + v.name)) ||
+    voices.find((v) => v.lang === 'en-GB') ||
+    voices.find((v) => v.lang === lang) ||
+    voices.find((v) => v.lang.toLowerCase().startsWith(lang.split('-')[0].toLowerCase())) ||
+    voices[0]
+  );
 }
+
 function stopSpeaking() {
+  if (currentJarvisAudio) {
+    try {
+      currentJarvisAudio.pause();
+      currentJarvisAudio.currentTime = 0;
+    } catch {}
+    currentJarvisAudio = null;
+  }
   if (window.speechSynthesis) speechSynthesis.cancel();
   state.speaking = false;
   refreshUI();
@@ -1980,40 +2026,114 @@ function stopSpeaking() {
     setTimeout(startBackgroundVoiceListener, 250);
   }
 }
-function speak(text) {
-  return new Promise((resolve) => {
-    if (!state.speakReplies || !window.speechSynthesis || !text) return resolve();
-    speechSynthesis.cancel();
-    const cleanText = text.replace(/[*_#`~>\[\]\(\)]/g, ' ').replace(/\s+/g, ' ').trim();
-    const parts = (cleanText.match(/[^.!?؟۔\n]+[.!?؟۔]*/g) || [cleanText]).map((p) => p.trim()).filter(Boolean);
-    const selectedLang = state.voiceLang || 'en-US';
-    const voice = pickVoice(selectedLang);
-    if (selectedLang.toLowerCase().startsWith('ckb') && !voice) {
-      toast('This device has no Sorani text-to-speech voice. Kurdish text still works; choose English for spoken replies or install a Sorani voice if your OS offers one.');
-      return resolve();
-    }
-    state.speaking = true;
+
+function connectJarvisAcousticFilter(audioElement) {
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+    const source = ctx.createMediaElementSource(audioElement);
+    // High-pass filter (removes muddy low-end, crisp intercom clarity)
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass';
+    hp.frequency.value = 115;
+
+    // Presence boost around 2.6 kHz for Paul Bettany's crisp HUD articulation
+    const presence = ctx.createBiquadFilter();
+    presence.type = 'peaking';
+    presence.frequency.value = 2650;
+    presence.Q.value = 1.2;
+    presence.gain.value = 3.5;
+
+    // Subtle metallic HUD chamber resonance (11ms delay at 14% wet mix)
+    const delay = ctx.createDelay();
+    delay.delayTime.value = 0.011;
+    const wetGain = ctx.createGain();
+    wetGain.gain.value = 0.14;
+
+    // Dynamic compressor for steady, authoritative vocal level
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -20;
+    comp.knee.value = 12;
+    comp.ratio.value = 3.5;
+
+    source.connect(hp);
+    hp.connect(presence);
+    presence.connect(comp);
+    presence.connect(delay);
+    delay.connect(wetGain);
+    wetGain.connect(comp);
+    comp.connect(ctx.destination);
+  } catch {}
+}
+
+async function speak(text) {
+  if (!state.speakReplies || !text) return;
+  stopSpeaking();
+  const cleanText = text.replace(/```[\s\S]*?```/g, ' Code is ready on your screen, Sir. ')
+                        .replace(/[*_#`~>\[\]\(\)]/g, ' ')
+                        .replace(/\s+/g, ' ')
+                        .trim();
+  if (!cleanText) return;
+
+  state.speaking = true;
+  refreshUI();
+
+  const finishSpeaking = () => {
+    currentJarvisAudio = null;
+    state.speaking = false;
     refreshUI();
-    const done = () => {
-      state.speaking = false;
-      refreshUI();
-      resolve();
-      if ((state.wakeWordEnabled || state.handsFree || state.camActive) && !state.rec && !state.busy) {
-        setTimeout(startBackgroundVoiceListener, 300);
+    if ((state.wakeWordEnabled || state.handsFree || state.camActive) && !state.rec && !state.busy) {
+      setTimeout(startBackgroundVoiceListener, 280);
+    }
+  };
+
+  // 1. Primary: Backend Neural JARVIS Voice (Paul Bettany en-GB-RyanNeural + Kurdish Sorani Phonetic Neural TTS)
+  try {
+    const res = await fetch('/api/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: cleanText })
+    });
+    if (res.ok) {
+      const blob = await res.blob();
+      if (blob.size > 200) {
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        currentJarvisAudio = audio;
+        connectJarvisAcousticFilter(audio);
+        await new Promise((resolve) => {
+          audio.onended = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.onerror = () => { URL.revokeObjectURL(url); resolve(); };
+          audio.play().catch(() => resolve());
+        });
+        finishSpeaking();
+        return;
       }
-    };
+    }
+  } catch {}
+
+  // 2. Fallback: Browser SpeechSynthesis with British RP Male voice selection
+  await new Promise((resolve) => {
+    if (!window.speechSynthesis) return resolve();
+    speechSynthesis.cancel();
+    const parts = (cleanText.match(/[^.!?؟۔\n]+[.!?؟۔]*/g) || [cleanText]).map((p) => p.trim()).filter(Boolean);
+    const isKurdishText = /[ۆەێڕڵپچژگڤھ]/.test(cleanText);
+    const selectedLang = isKurdishText ? 'ar-IQ' : (state.voiceLang || 'en-GB');
+    const voice = pickVoice(selectedLang);
     parts.forEach((p, i) => {
       const u = new SpeechSynthesisUtterance(p);
-      u.lang = voice?.lang || state.voiceLang || 'en-US';
+      u.lang = voice?.lang || selectedLang;
       if (voice) u.voice = voice;
-      u.rate = 1.05;
+      u.pitch = 0.92;
+      u.rate = 1.04;
       if (i === parts.length - 1) {
-        u.onend = done;
-        u.onerror = done;
+        u.onend = resolve;
+        u.onerror = resolve;
       }
       speechSynthesis.speak(u);
     });
   });
+  finishSpeaking();
 }
 function syncSpeakBtn() { const b = $('#speakToggle'); b.textContent = state.speakReplies ? 'Voice replies: on' : 'Voice replies: off'; b.classList.toggle('on', state.speakReplies); b.setAttribute('aria-pressed', state.speakReplies); }
 $('#speakToggle').addEventListener('click', () => { state.speakReplies = !state.speakReplies; LS.set('jarvis_speak', state.speakReplies ? '1' : '0'); if (!state.speakReplies) stopSpeaking(); syncSpeakBtn(); });
@@ -2210,3 +2330,17 @@ $('#btnCopyGuideLink')?.addEventListener('click', () => {
     prompt('Copy this link for your mobile phone:', link);
   });
 });
+
+
+// Poll backend wake signal every 900ms (triggers HUD & Intro when woken by background daemon or Ctrl+Alt+J)
+setInterval(async () => {
+  try {
+    const res = await fetch('/api/wake_signal');
+    if (res.ok) {
+      const d = await res.json();
+      if (d.wake) {
+        triggerWakeUpSequence({ isStartup: false, playVideo: true });
+      }
+    }
+  } catch {}
+}, 900);

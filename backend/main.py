@@ -14,7 +14,7 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 # Load .env BEFORE importing agent.py (it reads a few settings at import time).
@@ -23,10 +23,12 @@ FRONTEND = ROOT / "frontend"
 load_dotenv(ROOT / ".env")
 
 if __package__:
-    from . import devices, memory, phone_control, remote, settings, tools
+    from . import background_daemon, devices, memory, phone_control, remote, settings, tools, voice
     from .agent import STATE, diagnose, stream_jarvis, test_brain, warmup
 else:
+    import background_daemon  # type: ignore
     import devices  # type: ignore
+    import voice  # type: ignore
     import memory  # type: ignore
     import phone_control  # type: ignore
     import remote  # type: ignore
@@ -34,7 +36,7 @@ else:
     import tools  # type: ignore
     from agent import STATE, diagnose, stream_jarvis, test_brain, warmup  # type: ignore
 
-app = FastAPI(title="JARVIS Free Agent", version="5.0.0")
+app = FastAPI(title="JARVIS Free Agent V6", version="6.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -64,7 +66,7 @@ async def local_network_guard(request: Request, call_next):
     path = request.url.path
 
     # Always allow phone portal and static assets across local network or remote tunnel
-    if path.startswith(("/phone", "/api/phone", "/favicon.ico", "/assets", "/styles.css", "/app.js", "/api/remote", "/api/history")):
+    if path.startswith(("/phone", "/api/phone", "/favicon.ico", "/assets", "/styles.css", "/app.js", "/api/remote", "/api/history", "/api/tts", "/api/wake_signal", "/api/wake_trigger", "/api/window")):
         return await call_next(request)
 
     # If remote visitor hits root "/" without path, automatically redirect to "/phone"
@@ -888,3 +890,45 @@ async def remote_custom_api(payload: dict) -> dict:
     return remote.set_custom_url(url)
 
 
+
+
+
+# ----------------------------------------------------------------------------- V6 Neural Voice (Paul Bettany & Kurdish Sorani) + Background Wake HUD
+@app.post("/api/tts")
+async def tts_endpoint(payload: dict[str, Any]) -> Response:
+    """Synthesizes authentic JARVIS British RP voice or Kurdish Sorani speech."""
+    text = str(payload.get("text", "")).strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Text is required")
+    voice_override = str(payload.get("voice", "")).strip()
+    pitch = str(payload.get("pitch", "")).strip()
+    rate = str(payload.get("rate", "")).strip()
+    audio_bytes, mime_type = await voice.synthesize_speech(text, voice_override=voice_override, pitch=pitch, rate=rate)
+    if not audio_bytes:
+        raise HTTPException(status_code=503, detail="Neural TTS unavailable")
+    return Response(content=audio_bytes, media_type=mime_type, headers={"Cache-Control": "public, max-age=3600"})
+
+
+@app.post("/api/window/pop_to_front")
+async def window_pop_to_front() -> dict[str, Any]:
+    """Restores, maximizes, and brings the JARVIS HUD window to the front of the screen on wake-up."""
+    msg = await asyncio.to_thread(background_daemon.bring_jarvis_window_to_front, False)
+    return {"ok": True, "message": msg}
+
+
+@app.post("/api/wake_trigger")
+async def wake_trigger_api(payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Triggered by background mic daemon, Ctrl+Alt+J hotkey, or phone to wake JARVIS HUD."""
+    STATE["wake_signal"] = True
+    STATE["wake_timestamp"] = time.time()
+    await asyncio.to_thread(background_daemon.bring_jarvis_window_to_front, True)
+    return {"ok": True, "wake": True}
+
+
+@app.get("/api/wake_signal")
+async def wake_signal_api() -> dict[str, Any]:
+    """Polled by the frontend to immediately launch the fullscreen intro when woken from background."""
+    if STATE.get("wake_signal"):
+        STATE["wake_signal"] = False
+        return {"wake": True, "timestamp": STATE.get("wake_timestamp", time.time())}
+    return {"wake": False}

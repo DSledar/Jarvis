@@ -44,7 +44,7 @@ APP_WORDS = {
     "file explorer": ["file explorer", "explorer", "files", "my files", "مستكشف الملفات", "ملفات", "فایلەکان"],
     "task manager": ["task manager", "taskmanager", "مدير المهام"],
     "settings": ["settings", "setting", "الاعدادات", "الإعدادات", "اعدادات", "ڕێکخستن", "ڕێکخستنەکان"],
-    "vs code": ["vs code", "vscode", "visual studio code", "code editor", "فيجوال ستوديو كود"],
+    "vs code": ["vs code", "vscode", "visual studio code", "code editor", "فيجوال ستوديو كود", "ڤی ئێس کۆد", "ڤی ئێس کۆدە", "کۆد ئێدیتەر"],
     "whatsapp": ["whatsapp", "whats app", "واتساب", "وەتسئاپ", "واتسئاپ"],
     "telegram": ["telegram", "تلگرام", "تيليجرام", "تێلێگرام"],
     "discord": ["discord", "ديسكورد", "دیسکۆرد"],
@@ -98,10 +98,10 @@ def _lang(text: str) -> str:
 
 
 PHR = {  # short spoken replies in 3 languages
-    "opening": {"en": "Opening {x}.", "ar": "جاري فتح {x}.", "ku": "دەستبەجێ {x} دەکرێتەوە."},
-    "done": {"en": "Done.", "ar": "تم.", "ku": "تەواو کرا."},
+    "opening": {"en": "Opening {x}.", "ar": "جاري فتح {x}.", "ku": "بەسەرچاو گەورەم، دەستبەجێ {x} دەکرێتەوە."},
+    "done": {"en": "Done.", "ar": "تم.", "ku": "فەرمانەکەت جێبەجێ کرا گەورەم."},
     "hello": {"en": "Hello Sir. What can I do for you?", "ar": "أهلاً سيدي. كيف أخدمك؟", "ku": "سڵاو گەورەم. چۆن دەتوانم یارمەتیت بدەم؟"},
-    "thanks": {"en": "Anytime, Sir.", "ar": "على الرحب والسعة.", "ku": "شایەنی نییە، لە خزمەتتام."},
+    "thanks": {"en": "Anytime, Sir.", "ar": "على الرحب والسعة.", "ku": "شایەنی نییە گەورەم، هەمیشە لە خزمەتدام."},
 }
 
 
