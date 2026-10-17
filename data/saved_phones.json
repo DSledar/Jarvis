@@ -7,7 +7,7 @@
       "has_pin": true,
       "connection_type": "usb",
       "auto_unlock": true,
-      "last_connected": 1792094648.2645187
+      "last_connected": 1792235033.6894495
     },
     "147963762V000201": {
       "serial": "147963762V000201",
@@ -16,7 +16,7 @@
       "has_pin": true,
       "connection_type": "usb",
       "auto_unlock": true,
-      "last_connected": 1792094861.7832243
+      "last_connected": 1792237545.020101
     }
   },
   "last_unlocked_pin": "0000",
