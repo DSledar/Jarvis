@@ -105,6 +105,164 @@ def download_adb() -> dict[str, Any]:
         return {"ok": False, "error": f"Failed to download ADB: {exc}"}
 
 
+# --------------------------------------------------------------------------- Native Interactive Phone Mirroring (scrcpy 60FPS)
+_SCRCPY_PATH: str | None = None
+_SCRCPY_PROC: subprocess.Popen | None = None
+_SCRCPY_LOCK = threading.RLock()
+
+
+def find_scrcpy() -> str | None:
+    """Locates scrcpy executable on Windows or Unix."""
+    global _SCRCPY_PATH
+    if _SCRCPY_PATH and Path(_SCRCPY_PATH).is_file():
+        return _SCRCPY_PATH
+
+    import shutil
+    candidate = shutil.which("scrcpy") or shutil.which("scrcpy.exe")
+    if candidate and Path(candidate).is_file():
+        _SCRCPY_PATH = candidate
+        return candidate
+
+    local_app_data = os.getenv("LOCALAPPDATA", "")
+    user_home = Path.home()
+    spots = [
+        ROOT / "tools" / "scrcpy" / "scrcpy.exe",
+        ROOT / "tools" / "scrcpy.exe",
+        Path("C:/Program Files/scrcpy/scrcpy.exe"),
+        Path("C:/scrcpy/scrcpy.exe"),
+        user_home / "AppData" / "Local" / "Programs" / "scrcpy" / "scrcpy.exe",
+    ]
+    # Check WinGet package directories
+    winget_packages = Path(local_app_data) / "Microsoft" / "WinGet" / "Packages"
+    if winget_packages.is_dir():
+        try:
+            for p in winget_packages.glob("*scrcpy*/**/*.exe"):
+                if p.name.lower() == "scrcpy.exe" and p.is_file():
+                    _SCRCPY_PATH = str(p)
+                    return _SCRCPY_PATH
+        except Exception:
+            pass
+
+    for s in spots:
+        if s.is_file():
+            _SCRCPY_PATH = str(s)
+            return _SCRCPY_PATH
+
+    return None
+
+
+def launch_scrcpy_mirror(serial: str = "", title: str = "", stay_awake: bool = True) -> dict[str, Any]:
+    """Launches a native 60FPS high-speed interactive window on Windows via scrcpy."""
+    global _SCRCPY_PROC
+    scrcpy_bin = find_scrcpy()
+    if not scrcpy_bin:
+        return {
+            "ok": False,
+            "error": "scrcpy was not found on this system. Please install scrcpy or place scrcpy.exe in tools/scrcpy."
+        }
+
+    adb_bin = find_adb()
+    connected = get_adb_devices()
+    target_serial = serial.strip()
+
+    if not target_serial:
+        if connected:
+            target_serial = connected[0].get("serial", "")
+        else:
+            # Check saved phones with Wi-Fi IP
+            saved = load_saved_phones()
+            devices_map = saved.get("devices", {})
+            for s, info in devices_map.items():
+                wifi_ip = info.get("wifi_ip", "").strip()
+                if wifi_ip and adb_bin:
+                    try:
+                        subprocess.run([adb_bin, "connect", f"{wifi_ip}:5555"], capture_output=True, timeout=3)
+                        target_serial = s
+                        break
+                    except Exception:
+                        pass
+
+    model_name = ""
+    if target_serial:
+        model_name = get_device_model(target_serial)
+
+    win_title = title.strip() or f"JARVIS Mobile Interface - {model_name or target_serial or 'Live Phone'}"
+    cmd = [scrcpy_bin, "--window-title", win_title]
+    if stay_awake:
+        cmd.append("--stay-awake")
+    if target_serial:
+        cmd.extend(["-s", target_serial])
+
+    # Pass ADB in environment
+    env = os.environ.copy()
+    if adb_bin:
+        env["ADB"] = adb_bin
+        adb_dir = str(Path(adb_bin).parent)
+        env["PATH"] = f"{adb_dir};{env.get('PATH', '')}"
+
+    with _SCRCPY_LOCK:
+        if _SCRCPY_PROC and _SCRCPY_PROC.poll() is None:
+            return {
+                "ok": True,
+                "already_running": True,
+                "pid": _SCRCPY_PROC.pid,
+                "message": f"Interactive mobile screen window is already open ({win_title})."
+            }
+
+        try:
+            _SCRCPY_PROC = subprocess.Popen(
+                cmd,
+                env=env,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.PIPE
+            )
+            return {
+                "ok": True,
+                "pid": _SCRCPY_PROC.pid,
+                "serial": target_serial,
+                "model": model_name,
+                "message": f"Interactive mobile interface opened smoothly on Windows ({win_title})."
+            }
+        except Exception as exc:
+            return {"ok": False, "error": f"Failed to start scrcpy: {exc}"}
+
+
+def stop_scrcpy_mirror() -> dict[str, Any]:
+    """Closes the active scrcpy phone mirror window if running."""
+    global _SCRCPY_PROC
+    with _SCRCPY_LOCK:
+        if _SCRCPY_PROC and _SCRCPY_PROC.poll() is None:
+            try:
+                _SCRCPY_PROC.terminate()
+                _SCRCPY_PROC.wait(timeout=2)
+            except Exception:
+                try:
+                    _SCRCPY_PROC.kill()
+                except Exception:
+                    pass
+            _SCRCPY_PROC = None
+            return {"ok": True, "message": "Closed interactive mobile screen."}
+        _SCRCPY_PROC = None
+        return {"ok": True, "message": "No active mobile screen was running."}
+
+
+def get_scrcpy_status() -> dict[str, Any]:
+    """Returns scrcpy availability and running status."""
+    scrcpy_bin = find_scrcpy()
+    is_running = False
+    with _SCRCPY_LOCK:
+        if _SCRCPY_PROC and _SCRCPY_PROC.poll() is None:
+            is_running = True
+    return {
+        "available": bool(scrcpy_bin),
+        "path": scrcpy_bin,
+        "running": is_running,
+        "pid": _SCRCPY_PROC.pid if is_running and _SCRCPY_PROC else None
+    }
+
+
+
 # --------------------------------------------------------------------------- Phone Memory & Saved Credentials
 _SAVED_PHONES_LOCK = threading.RLock()
 

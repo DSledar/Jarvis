@@ -938,6 +938,29 @@ def switch_phone_to_wifi_tool(serial: str = "") -> str:
     return f"Failed to switch to Wi-Fi mode: {res.get('error')}"
 
 
+@tool("launch_phone_mirror", "Launch a buttery-smooth 60FPS native interactive window on Windows to view and control the phone in real-time via scrcpy (not a slow web stream).",
+      {"serial": "string: Optional ADB device serial if multiple phones are connected", "title": "string: Optional custom window title"},
+      required=[])
+def launch_phone_mirror_tool(serial: str = "", title: str = "") -> str:
+    if __package__:
+        import phone_control
+    else:
+        import phone_control
+    res = phone_control.launch_scrcpy_mirror(serial=serial, title=title)
+    if res.get("ok"):
+        return res.get("message", "Interactive mobile interface opened smoothly on Windows.")
+    return f"ERROR: Failed to launch mobile interface: {res.get('error', 'Unknown error')}"
+
+
+@tool("stop_phone_mirror", "Close the active scrcpy interactive mobile screen window on Windows.")
+def stop_phone_mirror_tool() -> str:
+    if __package__:
+        import phone_control
+    else:
+        import phone_control
+    res = phone_control.stop_scrcpy_mirror()
+    return res.get("message", "Closed mobile screen.")
+
 
 @tool("phone_adb", "Execute an ADB shell command or keyevent on connected Android phone.",
       {"command": "string: ADB shell command (e.g. 'input keyevent 26', 'input tap 500 500', 'am start ...')"},
@@ -1344,7 +1367,7 @@ CATEGORIES = {
     "Mouse and keyboard": ["mouse_click", "mouse_move", "scroll", "type_text", "press_key", "show_desktop", "screen_size"],
     "Windows and screen": ["list_windows", "focus_window", "minimize_window", "maximize_window", "restore_window", "close_window", "list_controls", "click_control", "clipboard", "lock_pc", "sleep_pc"],
     "Python & Coding": ["execute_python", "analyze_code", "python_doc", "write_code_file"],
-    "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "toggle_phone_flashlight", "vibrate_phone", "speak_on_phone", "scan_network_devices", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "switch_phone_to_wifi", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
+    "Nearby Devices & Phone": ["list_nearby_devices", "connect_device", "launch_phone_mirror", "stop_phone_mirror", "toggle_phone_flashlight", "vibrate_phone", "speak_on_phone", "scan_network_devices", "send_to_phone", "ring_phone", "get_phone_status", "sync_clipboard_with_phone", "unlock_phone", "switch_phone_to_wifi", "phone_adb", "wake_pc_lan", "start_remote_tunnel", "get_remote_url"],
     "System and files": ["system_info", "get_time", "list_processes", "list_dir", "read_file", "open_path"],
     "Memory": ["remember", "forget"],
     "Needs your approval": ["run_command", "write_file", "delete_path", "power"],

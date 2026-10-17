@@ -293,6 +293,14 @@ def _try_single_plan(message: str) -> Plan | None:  # noqa: C901 - a flat list o
     if re.search(r"\b(see pc screen|see screen|view screen|look at pc screen|شاهد الشاشة|شاشە ببینە)\b", text):
         return Plan(steps=[("see_pc_screen", {"question": "Describe current desktop screen"})],
                     say=lambda r: r[0], name="see_screen")
+    if re.search(r"\b(?:mirror(?:\s+my)?\s+phone|launch\s+phone\s+interface|open\s+phone\s+screen|start\s+scrcpy|open\s+scrcpy|live\s+phone\s+screen|live\s+phone\s+window)\b|شاشەی مۆبایل پیشان بدە|شاشەی مۆبایل بکەرەوە|مۆبایلەکە بکەرەوە|مۆبایلەکە پیشان بدە|سکرپی بکەرەوە|افتح شاشة الهاتف|عرض شاشة الهاتف|شاشة الجوال", text):
+        return Plan(steps=[("launch_phone_mirror", {})],
+                    say=_result_say(lambda: "شاشەی ڕاستەوخۆی مۆبایلەکەت لەسەر ویندۆز دەکرێتەوە، گەورەم." if lang == "ku" else ("جاري فتح شاشة الهاتف التفاعلية على ويندوز يا سيدي." if lang == "ar" else "Opening live interactive mobile screen on your PC, sir.")), name="launch_phone_mirror")
+
+    if re.search(r"\b(?:close\s+phone\s+mirror|stop\s+phone\s+mirror|close\s+scrcpy|stop\s+scrcpy|close\s+phone\s+screen)\b|شاشەی مۆبایل دابخە|مۆبایلەکە دابخە|سکرپی دابخە|اغلق شاشة الهاتف|إغلاق شاشة الجوال", text):
+        return Plan(steps=[("stop_phone_mirror", {})],
+                    say=_result_say(lambda: "شاشەی مۆبایل داخرا." if lang == "ku" else ("تم إغلاق شاشة الهاتف." if lang == "ar" else "Closed interactive mobile screen, sir.")), name="stop_phone_mirror")
+
     if re.search(r"\b(see phone screen|view phone screen|mobile screen|شاشەی مۆبایل ببینە)\b", text):
         return Plan(steps=[("see_phone_screen", {"question": "Inspect mobile screen"})],
                     say=lambda r: r[0], name="see_phone_screen")

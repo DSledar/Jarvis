@@ -910,6 +910,73 @@ async def phone_capture_request_api(request: Request) -> dict:
 
 
 
+# ----------------------------------------------------------------------------- Interactive Phone Mirroring (scrcpy) & Direct PC Actions
+@app.post("/api/phone/scrcpy/launch")
+async def phone_scrcpy_launch_api(payload: dict, request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    serial = str(payload.get("serial", "")).strip()
+    title = str(payload.get("title", "")).strip()
+    return await asyncio.to_thread(phone_control.launch_scrcpy_mirror, serial, title)
+
+
+@app.post("/api/phone/scrcpy/stop")
+async def phone_scrcpy_stop_api(request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    return await asyncio.to_thread(phone_control.stop_scrcpy_mirror)
+
+
+@app.get("/api/phone/scrcpy/status")
+async def phone_scrcpy_status_api(request: Request) -> dict[str, Any]:
+    _require_local_dashboard(request)
+    return await asyncio.to_thread(phone_control.get_scrcpy_status)
+
+
+@app.post("/api/pc/action")
+async def pc_action_api(payload: dict, request: Request) -> dict[str, Any]:
+    cmd = str(payload.get("command") or payload.get("action", "")).strip().lower()
+    val = payload.get("value")
+    try:
+        if cmd in ("vol_up", "volume_up"):
+            presses = int(val or 5)
+            tools.media_control("volume_up", times=presses)
+            return {"ok": True, "status": "Increasing PC audio levels, sir."}
+        elif cmd in ("vol_down", "volume_down"):
+            presses = int(val or 5)
+            tools.media_control("volume_down", times=presses)
+            return {"ok": True, "status": "Decreasing PC audio levels, sir."}
+        elif cmd == "mute":
+            tools.media_control("mute")
+            return {"ok": True, "status": "Audio mute toggled, sir."}
+        elif cmd in ("play_pause", "toggle_media"):
+            tools.media_control("play_pause")
+            return {"ok": True, "status": "Media playback toggled, sir."}
+        elif cmd == "screenshot":
+            path = tools.take_screenshot()
+            return {"ok": True, "status": f"Screen captured: {path}"}
+        elif cmd in ("lock_pc", "lock"):
+            tools.lock_pc()
+            return {"ok": True, "status": "Workstation locked, sir."}
+        elif cmd in ("sleep_pc", "sleep"):
+            res = phone_control.sleep_pc()
+            return {"ok": True, "status": res}
+        elif cmd in ("open_browser", "browser"):
+            tools.open_app("chrome")
+            return {"ok": True, "status": "Launching web browser on PC, sir."}
+        elif cmd in ("open_code", "code"):
+            tools.open_app("vs code")
+            return {"ok": True, "status": "Initializing Visual Studio Code, sir."}
+        elif cmd in ("open_explorer", "explorer"):
+            tools.open_app("file explorer")
+            return {"ok": True, "status": "Opening file directory, sir."}
+        elif cmd in ("minimize_all", "desktop"):
+            tools.show_desktop()
+            return {"ok": True, "status": "Toggling desktop view, sir."}
+        else:
+            return {"ok": False, "status": f"Unrecognized PC protocol: {cmd}"}
+    except Exception as exc:
+        return {"ok": False, "status": f"Error executing protocol: {exc}"}
+
+
 # ----------------------------------------------------------------------------- Phone Calls
 @app.post("/api/phone/call")
 async def phone_call_api(payload: dict, request: Request) -> dict[str, Any]:

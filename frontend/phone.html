@@ -490,8 +490,12 @@
               Snap & Send Photo
               <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden" />
             </label>
-            <button id="btnShareScreen" class="btn-action highlight">
+            <button id="btnLaunchScrcpyMobile" class="btn-action highlight" title="Open 60FPS interactive screen on PC (scrcpy)">
               <svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+              Open 60FPS on PC
+            </button>
+            <button id="btnShareScreen" class="btn-action">
+              <svg viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
               Share Phone Screen
             </button>
             <button id="btnSendClipboard" class="btn-action">
@@ -1154,7 +1158,21 @@
         }
       } catch (e) {}
     }
-    document.getElementById('btnWakeLock').onclick = enableWakeLock;
+    // Launch scrcpy Native Interface from Phone
+    document.getElementById('btnLaunchScrcpyMobile').onclick = async () => {
+      toast('Opening 60FPS interactive mobile screen on your PC...');
+      try {
+        const res = await fetch('/api/phone/scrcpy/launch', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-phone-token': token },
+          body: JSON.stringify({ token })
+        });
+        const d = await res.json();
+        toast(d.message || (d.ok ? 'Mobile screen opened on PC!' : (d.error || 'Failed to launch scrcpy')));
+      } catch (e) {
+        toast('Error: ' + e.message);
+      }
+    };
 
     // Mobile Screen Sharing
     async function shareMobileScreen() {

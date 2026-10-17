@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>JARVIS Command Center</title>
   <link rel="stylesheet" href="/styles.css" />
+  <!-- MediaPipe Hands & Camera Libraries for Hand Gesture Control -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 <div class="app" id="app">
@@ -53,6 +56,8 @@
         <button id="wakeBtn" class="primary" title="Trigger Wake-up Video & Systems"><svg class="ic"><use href="#i-bolt"/></svg>Wake Up</button>
         <button id="sleepBtn" class="ghost" title="Enter Sleep Mode"><svg class="ic"><use href="#i-moon"/></svg>Sleep Mode</button>
         <button id="cameraBtn" class="ghost" title="Live Cam Vision Interaction"><svg class="ic"><use href="#i-camera"/></svg>Live Cam Vision</button>
+        <button id="gestureToggleBtn" class="ghost" title="Holographic Hand Gesture Volume & Core Control"><svg class="ic"><use href="#i-shield"/></svg><span id="topGestureLabel">🖐️ Hand Gestures</span></button>
+        <button id="btnTopScrcpy" class="ghost" title="Launch Interactive Native Mobile Screen (scrcpy 60FPS)"><svg class="ic"><use href="#i-phone"/></svg><span>📱 Live Phone</span></button>
         <button id="locationBtn" class="ghost"><svg class="ic"><use href="#i-pin"/></svg>Location</button>
         <button id="searchBtn" class="ghost"><svg class="ic"><use href="#i-search"/></svg>Search</button>
       </div>
@@ -465,26 +470,39 @@
         </div>
 
         <div class="media-grid" style="margin-top:16px;">
-          <!-- Card 3: Live Phone Screen Viewer -->
+          <!-- Card 3: Interactive Live Screen (scrcpy) & Mirroring -->
           <section class="panel">
-            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center;">
-              <h3 style="margin:0;">📸 Phone Screen & Mirroring</h3>
+            <div class="panel-head" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+              <h3 style="margin:0;">📱 Interactive Live Screen (scrcpy) &amp; Mirroring</h3>
               <div style="display:flex; gap:8px; align-items:center;">
-                <label style="font-size:12.5px; display:flex; align-items:center; gap:5px; cursor:pointer;" class="muted">
-                  <input type="checkbox" id="chkAutoRefreshPhoneScreen" style="width:auto; margin:0;" /> Auto-refresh
-                </label>
+                <button class="primary mini glow-cyan" id="btnLaunchScrcpy" type="button" title="Launch high-speed native 60FPS interactive screen on Windows">🚀 Launch Native Screen (scrcpy)</button>
+                <button class="ghost mini" id="btnStopScrcpy" type="button" title="Close interactive mobile screen">⏹️ Stop</button>
                 <button class="ghost mini" id="btnCapturePhoneScreen" type="button">📸 Capture Now</button>
               </div>
             </div>
-            <p class="muted" style="margin-top:4px;">View latest screen capture or camera snapshot taken from your phone:</p>
 
-            <div class="phone-screen-viewport" id="phoneScreenViewport" style="margin-top:12px; height:320px; background:#020b10; border:1px solid var(--line); border-radius:6px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
+            <div style="background:rgba(0,243,255,0.06); border:1px solid var(--cyan-dim); border-radius:6px; padding:10px 14px; margin:10px 0 12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+              <div>
+                <b style="color:var(--cyan); font-size:13px;">⚡ Real-Time Native Window (60 FPS):</b>
+                <span style="font-size:12.5px; opacity:0.85; margin-left:6px;">Opens an interactive mobile desktop window with full touch, mouse, and keyboard typing.</span>
+              </div>
+              <div style="display:flex; gap:6px; align-items:center;">
+                <label style="font-size:12px; display:flex; align-items:center; gap:5px; cursor:pointer;" class="muted">
+                  <input type="checkbox" id="chkAutoRefreshPhoneScreen" style="width:auto; margin:0;" /> Web Preview
+                </label>
+              </div>
+            </div>
+
+            <div class="phone-screen-viewport" id="phoneScreenViewport" style="margin-top:4px; height:320px; background:#020b10; border:1px solid var(--line); border-radius:6px; display:flex; align-items:center; justify-content:center; position:relative; overflow:hidden;">
               <img id="phoneScreenImg" src="" alt="Phone screen" style="max-height:100%; max-width:100%; object-fit:contain; display:none;" />
               <div id="phoneScreenPlaceholder" style="text-align:center; padding:20px; color:var(--muted);">
                 <div style="font-size:36px; margin-bottom:8px;">📱</div>
-                <b>No screenshot captured yet</b>
-                <p style="font-size:13px; margin:6px 0 12px;">Click "Capture Now" or connect via ADB / Companion web to inspect your phone screen.</p>
-                <button class="primary mini" id="btnRequestScreenFromPhone" type="button">Take Screen Capture</button>
+                <b>Interactive Mobile Link Ready</b>
+                <p style="font-size:13px; margin:6px 0 12px;">Launch native 60FPS interactive window or click "Capture Now" for a quick snapshot.</p>
+                <div style="display:flex; justify-content:center; gap:8px;">
+                  <button class="primary mini" id="btnLaunchScrcpyCenter" type="button">🚀 Open Live Phone Screen</button>
+                  <button class="ghost mini" id="btnRequestScreenFromPhone" type="button">Take Static Capture</button>
+                </div>
               </div>
             </div>
           </section>
@@ -761,6 +779,77 @@
     </div>
   </div>
 </div>
+
+<!-- Holographic Hand Gesture & Camera HUD Modal -->
+<div id="gestureModal" class="modal hidden" role="dialog" aria-label="Holographic Hand Gesture HUD">
+  <div class="modal-card wide gesture-hud-card">
+    <div class="modal-head">
+      <div style="display:flex; align-items:center; gap:10px;">
+        <span class="wake-dot"></span>
+        <h3 style="margin:0;">🖐️ Holographic Hand Gesture &amp; Camera HUD</h3>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <span class="chip warn mini" id="gestureHudStatus"><i class="dot"></i><span id="gestureStatusText">SEARCHING FOR HANDS...</span></span>
+        <button id="btnGesturePip" class="ghost mini" type="button" title="Toggle Floating HUD Widget">📌 Float / PIP</button>
+        <button class="icon-btn" data-close title="Close Gesture HUD">✕</button>
+      </div>
+    </div>
+
+    <div class="gesture-container">
+      <div class="gesture-viewport">
+        <!-- Live Camera Feed (Mirrored so you see yourself clearly!) -->
+        <video id="gestureVideo" autoplay playsinline muted></video>
+        <!-- Overlay Canvas for Drawing Skeletal Hand Landmarks and HUD reticles -->
+        <canvas id="gestureCanvas"></canvas>
+
+        <div class="gesture-hud-overlay">
+          <div class="gesture-hud-reticle top-left"></div>
+          <div class="gesture-hud-reticle top-right"></div>
+          <div class="gesture-hud-reticle bottom-left"></div>
+          <div class="gesture-hud-reticle bottom-right"></div>
+          <div class="gesture-action-badge" id="gestureActionBadge">READY FOR GESTURES</div>
+        </div>
+      </div>
+
+      <div class="gesture-sidebar">
+        <!-- Live Audio Level Feedback HUD -->
+        <div class="gesture-volume-card">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">
+            <span style="font-size:12px; font-weight:700; color:var(--cyan); letter-spacing:1px;">PC AUDIO LEVEL</span>
+            <span id="gestureVolText" style="font-size:16px; font-weight:800; color:#fff;">--%</span>
+          </div>
+          <div class="gesture-vol-track">
+            <div id="gestureVolBar" class="gesture-vol-fill" style="width: 50%;"></div>
+          </div>
+          <div style="display:flex; justify-content:space-between; margin-top:6px;">
+            <button class="ghost mini" id="btnHudVolDown" type="button">🔉 -5%</button>
+            <button class="ghost mini" id="btnHudVolMute" type="button">🔇 Mute</button>
+            <button class="ghost mini" id="btnHudVolUp" type="button">🔊 +5%</button>
+          </div>
+        </div>
+
+        <div class="gesture-guide-card">
+          <div style="font-size:13px; font-weight:700; color:var(--cyan); margin-bottom:8px; border-bottom:1px solid var(--line); padding-bottom:4px;">
+            🎯 Hand Gesture Protocol Guide
+          </div>
+          <ul class="gesture-guide-list">
+            <li><b>👉 Swipe Right:</b> Increase PC Audio Volume</li>
+            <li><b>👈 Swipe Left:</b> Decrease PC Audio Volume</li>
+            <li><b>👌 Pinch Thumb &amp; Index:</b> Lock onto volume control</li>
+            <li><b>↕️ Pinch &amp; Slide Up / Down:</b> Fluid continuous volume slider (0% to 100%)</li>
+            <li><b>✊ Close Fist:</b> Toggle Mute / Silence</li>
+          </ul>
+        </div>
+
+        <div class="row-btns" style="margin-top:auto; gap:8px;">
+          <button id="btnToggleCamTrack" class="primary" type="button">Toggle Camera Feed</button>
+          <button id="btnTestBeep" class="ghost" type="button">Test Stark Chime</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div id="searchModal" class="modal hidden" role="dialog" aria-label="Search">
   <form class="modal-card" id="searchForm"><div class="modal-head"><h3>Search</h3><button type="button" class="icon-btn" data-close>Close</button></div>
     <input id="searchInput" placeholder="What are you looking for?" />

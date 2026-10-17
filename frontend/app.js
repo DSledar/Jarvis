@@ -1165,12 +1165,30 @@ async function loadPhoneControl() {
               </span>
             </div>
             <div style="display:flex; align-items:center; gap:6px;">
+              <button class="primary mini btn-mirror-specific" data-serial="${escapeHtml(p.serial)}" data-model="${escapeHtml(p.model || '')}" type="button" style="padding:3px 8px; font-weight:700;" title="Launch native 60FPS interactive screen for this phone">📺 Mirror</button>
               <button class="ghost mini btn-unlock-specific" data-serial="${escapeHtml(p.serial)}" type="button" style="color:var(--cyan); border-color:var(--cyan-dim); padding:3px 8px;" title="Unlock this device">🔓 Unlock</button>
               <button class="ghost mini btn-edit-phone" data-serial="${escapeHtml(p.serial)}" data-model="${escapeHtml(p.model || '')}" data-type="${escapeHtml(p.connection_type || 'usb')}" data-autounlock="${p.auto_unlock ? '1' : '0'}" type="button" style="color:var(--amber); padding:3px 8px;">✏️ Edit</button>
               <button class="ghost mini btn-forget-phone" data-serial="${escapeHtml(p.serial)}" type="button" style="color:var(--red); padding:3px 8px;">🗑️ Forget</button>
             </div>
           </div>
         `).join('');
+
+        // Launch scrcpy mirror for specific phone
+        savedContainer.querySelectorAll('.btn-mirror-specific').forEach(btn => {
+          btn.addEventListener('click', async (e) => {
+            const serial = e.currentTarget.dataset.serial;
+            const model = e.currentTarget.dataset.model;
+            toast(`Launching native 60FPS mobile interface for ${model || serial}...`);
+            try {
+              const res = await api('/api/phone/scrcpy/launch', { serial });
+              if (res.ok) {
+                toast(res.message || 'Mobile interface opened!');
+              } else {
+                toast('Mirror error: ' + (res.error || 'Failed to start scrcpy'), true);
+              }
+            } catch (err) { toast('Error launching mirror: ' + err.message, true); }
+          });
+        });
 
         // Unlock specific phone
         savedContainer.querySelectorAll('.btn-unlock-specific').forEach(btn => {
@@ -1835,11 +1853,22 @@ async function openLiveCamVision() {
     if (state.cam) {
       state.cam.getTracks().forEach((t) => t.stop());
     }
-    state.cam = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
-      audio: false
-    });
-    if (video) video.srcObject = state.cam;
+    try {
+      state.cam = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode: 'user' },
+        audio: false
+      });
+    } catch (e1) {
+      // Fallback if ideal resolution or facingMode is rejected
+      state.cam = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: false
+      });
+    }
+    if (video) {
+      video.srcObject = state.cam;
+      try { await video.play(); } catch (e) {}
+    }
     state.camActive = true;
     if (statusChip) statusChip.innerHTML = '<i class="dot"></i><span>Vision Active</span>';
     playVisionScanSound();
@@ -2374,3 +2403,384 @@ setInterval(async () => {
     }
   } catch {}
 }, 900);
+
+
+/* ============================================================================
+   HOLOGRAPHIC HAND GESTURE & CAMERA HUD ENGINE (MediaPipe + Scrcpy)
+   ============================================================================ */
+
+// 1. Procedural Sci-Fi Sound Synthesizer (Stark HUD Audio Feedback)
+let scifiAudioCtx = null;
+function playSciFiSound(type = 'beep') {
+  try {
+    if (!scifiAudioCtx) {
+      scifiAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    }
+    if (scifiAudioCtx.state === 'suspended') scifiAudioCtx.resume();
+    const osc = scifiAudioCtx.createOscillator();
+    const gain = scifiAudioCtx.createGain();
+    osc.connect(gain);
+    gain.connect(scifiAudioCtx.destination);
+    const now = scifiAudioCtx.currentTime;
+    if (type === 'beep') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(1200, now);
+      osc.frequency.exponentialRampToValueAtTime(1800, now + 0.08);
+      gain.gain.setValueAtTime(0.08, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+      osc.start(now);
+      osc.stop(now + 0.09);
+    } else if (type === 'wake') {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(520, now);
+      osc.frequency.exponentialRampToValueAtTime(1480, now + 0.16);
+      gain.gain.setValueAtTime(0.12, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.start(now);
+      osc.stop(now + 0.18);
+    } else if (type === 'confirm') {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(600, now);
+      osc.frequency.exponentialRampToValueAtTime(1400, now + 0.18);
+      gain.gain.setValueAtTime(0.1, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + 0.2);
+      osc.start(now);
+      osc.stop(now + 0.2);
+    }
+  } catch (e) {}
+}
+
+// 2. Hand Tracking State & MediaPipe Setup
+let gestureTrackingActive = false;
+let gestureCameraInstance = null;
+let gestureHandsInstance = null;
+let gestureMediaStream = null;
+let lastGestureHandX = 0;
+let lastGestureHandY = 0;
+let lastGestureSwipeTime = 0;
+let lastPinchVolume = 50;
+let lastVolumeChangeTime = 0;
+
+// MediaPipe Landmark Bone Connections
+const HAND_CONNECTIONS = [
+  [0, 1], [1, 2], [2, 3], [3, 4],       // Thumb
+  [0, 5], [5, 6], [6, 7], [7, 8],       // Index
+  [5, 9], [9, 10], [10, 11], [11, 12],  // Middle
+  [9, 13], [13, 14], [14, 15], [15, 16],// Ring
+  [13, 17], [17, 18], [18, 19], [19, 20], // Pinky
+  [0, 17]                               // Palm base
+];
+
+async function sendPCAudioAction(command, value = null) {
+  try {
+    const res = await fetch('/api/pc/action', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, value })
+    });
+    const d = await res.json();
+    return d;
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+function updateGestureUIState(statusText, badgeText, color = '#00f3ff') {
+  const statusEl = $('#gestureStatusText');
+  const badgeEl = $('#gestureActionBadge');
+  const chip = $('#gestureHudStatus');
+  if (statusEl) statusEl.textContent = statusText;
+  if (badgeEl) {
+    badgeEl.textContent = badgeText;
+    badgeEl.style.borderColor = color;
+    badgeEl.style.color = color;
+  }
+  if (chip) {
+    chip.style.borderColor = color;
+  }
+}
+
+function updateVolumeDisplay(volPct) {
+  const v = Math.max(0, Math.min(100, Math.round(volPct)));
+  const bar = $('#gestureVolBar');
+  const text = $('#gestureVolText');
+  if (bar) bar.style.width = v + '%';
+  if (text) text.textContent = v + '%';
+}
+
+function onHandResults(results) {
+  if (!gestureTrackingActive) return;
+
+  const canvas = $('#gestureCanvas');
+  const video = $('#gestureVideo');
+  if (!canvas || !video) return;
+
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width = video.videoWidth || 640;
+  const h = canvas.height = video.videoHeight || 480;
+  ctx.clearRect(0, 0, w, h);
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+    const landmarks = results.multiHandLandmarks[0];
+    const wrist = landmarks[0];
+    const thumbTip = landmarks[4];
+    const indexTip = landmarks[8];
+
+    // Draw Skeletal Bones (Glowing Neon Cyan)
+    ctx.strokeStyle = 'rgba(0, 243, 255, 0.75)';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (const [i, j] of HAND_CONNECTIONS) {
+      const p1 = landmarks[i], p2 = landmarks[j];
+      ctx.beginPath();
+      ctx.moveTo(p1.x * w, p1.y * h);
+      ctx.lineTo(p2.x * w, p2.y * h);
+      ctx.stroke();
+    }
+
+    // Draw Hand Joints (Cyan Nodes with Dark Borders)
+    landmarks.forEach((p, idx) => {
+      ctx.beginPath();
+      ctx.arc(p.x * w, p.y * h, idx % 4 === 0 ? 6 : 4, 0, 2 * Math.PI);
+      ctx.fillStyle = [4, 8, 12, 16, 20].includes(idx) ? '#00ffaa' : '#00f3ff';
+      ctx.shadowColor = '#00f3ff';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    });
+
+    const now = Date.now();
+
+    // 1. PINCH DETECTION (Thumb tip to Index tip distance)
+    const pinchDist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+    const isPinching = pinchDist < 0.065;
+
+    if (isPinching) {
+      // Connect pinch with bright emerald laser
+      ctx.beginPath();
+      ctx.moveTo(thumbTip.x * w, thumbTip.y * h);
+      ctx.lineTo(indexTip.x * w, indexTip.y * h);
+      ctx.strokeStyle = '#00ffaa';
+      ctx.lineWidth = 5;
+      ctx.stroke();
+
+      // Vertical hand elevation controls fluid volume (0% to 100%)
+      const elevation = 1.0 - Math.max(0.1, Math.min(0.9, indexTip.y));
+      const targetVolume = Math.round(((elevation - 0.1) / 0.8) * 100);
+
+      updateVolumeDisplay(targetVolume);
+      updateGestureUIState('PINCH LOCKED // FLUID VOLUME SLIDER', `VOLUME SLIDER: ${targetVolume}%`, '#00ffaa');
+
+      if (now - lastVolumeChangeTime > 250) {
+        lastVolumeChangeTime = now;
+        const diff = targetVolume - lastPinchVolume;
+        if (Math.abs(diff) >= 5) {
+          playSciFiSound('beep');
+          if (diff > 0) {
+            sendPCAudioAction('vol_up', Math.max(1, Math.round(diff / 5)));
+          } else {
+            sendPCAudioAction('vol_down', Math.max(1, Math.round(Math.abs(diff) / 5)));
+          }
+          lastPinchVolume = targetVolume;
+        }
+      }
+    } else {
+      // 2. SWIPE DETECTION (Wrist velocity across horizontal axis)
+      if (lastGestureHandX > 0 && now - lastGestureSwipeTime > 1200) {
+        const deltaX = wrist.x - lastGestureHandX;
+        // In mirrored canvas: wrist.x increasing is physical swipe LEFT, wrist.x decreasing is physical swipe RIGHT
+        if (deltaX < -0.22) {
+          // Hand swiped right
+          lastGestureSwipeTime = now;
+          playSciFiSound('confirm');
+          updateGestureUIState('SWIPE RIGHT DETECTED // RAISING VOLUME', '🔊 VOLUME INCREASED (+5%)', '#00ffaa');
+          toast('🖐️ Swipe Right: Raising audio volume');
+          sendPCAudioAction('vol_up', 5);
+          updateVolumeDisplay(lastPinchVolume + 5);
+          lastPinchVolume = Math.min(100, lastPinchVolume + 5);
+        } else if (deltaX > 0.22) {
+          // Hand swiped left
+          lastGestureSwipeTime = now;
+          playSciFiSound('confirm');
+          updateGestureUIState('SWIPE LEFT DETECTED // LOWERING VOLUME', '🔉 VOLUME DECREASED (-5%)', '#00ffaa');
+          toast('🖐️ Swipe Left: Lowering audio volume');
+          sendPCAudioAction('vol_down', 5);
+          updateVolumeDisplay(lastPinchVolume - 5);
+          lastPinchVolume = Math.max(0, lastPinchVolume - 5);
+        }
+      }
+
+      if (!isPinching && (now - lastGestureSwipeTime > 1200)) {
+        updateGestureUIState('HAND LOCKED // VOLUME CONTROL READY', 'SWIPE ↔️ OR PINCH ↕️ TO ADJUST VOLUME', '#00f3ff');
+      }
+    }
+
+    lastGestureHandX = wrist.x;
+    lastGestureHandY = wrist.y;
+  } else {
+    updateGestureUIState('SEARCHING FOR HANDS...', 'POSITION HAND IN CAMERA VIEW', '#ffaa00');
+  }
+}
+
+async function startHandGestureTracking() {
+  const modal = $('#gestureModal');
+  const video = $('#gestureVideo');
+  const topLabel = $('#topGestureLabel');
+
+  if (modal) modal.classList.remove('hidden');
+  updateGestureUIState('INITIALIZING CAMERA & NEURAL ENGINE...', 'INITIALIZING...', '#ffaa00');
+  playSciFiSound('wake');
+
+  try {
+    if (gestureMediaStream) {
+      gestureMediaStream.getTracks().forEach(t => t.stop());
+    }
+
+    try {
+      gestureMediaStream = await navigator.mediaDevices.getUserMedia({
+        video: { width: { ideal: 640 }, height: { ideal: 480 }, facingMode: 'user' },
+        audio: false
+      });
+    } catch (e1) {
+      gestureMediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+    }
+
+    if (video) {
+      video.srcObject = gestureMediaStream;
+      try { await video.play(); } catch (e) {}
+    }
+
+    // MediaPipe Hands Initialization
+    if (typeof window.Hands !== 'undefined') {
+      gestureHandsInstance = new window.Hands({
+        locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+      });
+      gestureHandsInstance.setOptions({
+        maxNumHands: 1,
+        modelComplexity: 1,
+        minDetectionConfidence: 0.55,
+        minTrackingConfidence: 0.55
+      });
+      gestureHandsInstance.onResults(onHandResults);
+
+      if (typeof window.Camera !== 'undefined' && video) {
+        gestureCameraInstance = new window.Camera(video, {
+          onFrame: async () => {
+            if (gestureTrackingActive && gestureHandsInstance && video.readyState >= 2) {
+              await gestureHandsInstance.send({ image: video });
+            }
+          },
+          width: 640,
+          height: 480
+        });
+        gestureCameraInstance.start();
+      }
+    }
+
+    gestureTrackingActive = true;
+    if (topLabel) topLabel.textContent = '🖐️ Gestures: ON';
+    toast('Holographic Hand Gesture tracking active!');
+    speak('Holographic hand tracking active, Sir. Swipe right or left to adjust audio volume.');
+  } catch (err) {
+    updateGestureUIState('CAMERA ACCESS FAILED', err.message, '#ff5555');
+    toast(`Camera error: ${err.message}. Please allow webcam access.`, true);
+  }
+}
+
+function stopHandGestureTracking() {
+  gestureTrackingActive = false;
+  if (gestureCameraInstance) {
+    try { gestureCameraInstance.stop(); } catch (e) {}
+    gestureCameraInstance = null;
+  }
+  if (gestureMediaStream) {
+    gestureMediaStream.getTracks().forEach(t => t.stop());
+    gestureMediaStream = null;
+  }
+  const video = $('#gestureVideo');
+  if (video) video.srcObject = null;
+
+  const topLabel = $('#topGestureLabel');
+  if (topLabel) topLabel.textContent = '🖐️ Hand Gestures';
+
+  const modal = $('#gestureModal');
+  if (modal) modal.classList.add('hidden');
+  toast('Hand Gesture tracking offline.');
+}
+
+function toggleHandGestureTracking() {
+  if (gestureTrackingActive) {
+    stopHandGestureTracking();
+  } else {
+    startHandGestureTracking();
+  }
+}
+
+// Wire Event Listeners for Gesture HUD
+$('#gestureToggleBtn')?.addEventListener('click', toggleHandGestureTracking);
+$('#btnToggleCamTrack')?.addEventListener('click', toggleHandGestureTracking);
+$('#btnTestBeep')?.addEventListener('click', () => {
+  playSciFiSound('confirm');
+  toast('Stark holographic sound test.');
+});
+
+$('#btnGesturePip')?.addEventListener('click', () => {
+  const card = $('.gesture-hud-card');
+  if (card) {
+    card.classList.toggle('pip-mode');
+    const isPip = card.classList.contains('pip-mode');
+    $('#btnGesturePip').textContent = isPip ? '🗖 Expand' : '📌 Float / PIP';
+    toast(isPip ? 'Gesture HUD docked to bottom corner (PIP Mode).' : 'Gesture HUD restored to normal view.');
+  }
+});
+
+// Gesture HUD Volume Controls
+$('#btnHudVolUp')?.addEventListener('click', () => {
+  playSciFiSound('beep');
+  sendPCAudioAction('vol_up', 5);
+  lastPinchVolume = Math.min(100, lastPinchVolume + 5);
+  updateVolumeDisplay(lastPinchVolume);
+});
+$('#btnHudVolDown')?.addEventListener('click', () => {
+  playSciFiSound('beep');
+  sendPCAudioAction('vol_down', 5);
+  lastPinchVolume = Math.max(0, lastPinchVolume - 5);
+  updateVolumeDisplay(lastPinchVolume);
+});
+$('#btnHudVolMute')?.addEventListener('click', () => {
+  playSciFiSound('confirm');
+  sendPCAudioAction('mute');
+  toast('Audio mute toggled.');
+});
+
+// 3. Interactive Native Screen (scrcpy 60FPS) Integration
+async function launchNativeScrcpy(serial = '') {
+  toast('🚀 Launching buttery-smooth 60FPS mobile interface on Windows (scrcpy)...');
+  try {
+    const res = await api('/api/phone/scrcpy/launch', { serial });
+    if (res.ok) {
+      toast(res.message || 'Mobile interface opened successfully!');
+      speak('Opening live mobile screen on your PC, Sir.');
+    } else {
+      toast('scrcpy error: ' + (res.error || 'Failed to start'), true);
+      alert('Could not start scrcpy: ' + (res.error || 'Check USB / Wi-Fi connection and ensure scrcpy is installed.'));
+    }
+  } catch (err) {
+    toast('Launch error: ' + err.message, true);
+  }
+}
+
+async function stopNativeScrcpy() {
+  try {
+    const res = await api('/api/phone/scrcpy/stop', {});
+    toast(res.message || 'Closed interactive mobile screen.');
+  } catch (err) {
+    toast('Error: ' + err.message, true);
+  }
+}
+
+$('#btnLaunchScrcpy')?.addEventListener('click', () => launchNativeScrcpy());
+$('#btnLaunchScrcpyCenter')?.addEventListener('click', () => launchNativeScrcpy());
+$('#btnTopScrcpy')?.addEventListener('click', () => launchNativeScrcpy());
+$('#btnStopScrcpy')?.addEventListener('click', stopNativeScrcpy);
+
