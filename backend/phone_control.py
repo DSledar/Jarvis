@@ -782,6 +782,19 @@ def request_phone_screenshot() -> dict[str, Any]:
     return {"ok": True, "method": "companion_web", "message": "Requested capture from connected phone companion."}
 
 
+def _prune_screen_captures(max_keep: int = 5) -> None:
+    """Keeps only the most recent screen captures to save disk and memory space."""
+    try:
+        files = sorted(SCREEN_DIR.glob("*.png"), key=lambda p: p.stat().st_mtime, reverse=True)
+        for old in files[max_keep:]:
+            try:
+                old.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def capture_phone_screenshot() -> str:
     """Takes a screenshot of the connected phone via ADB or retrieves latest upload."""
     adb = find_adb()
@@ -794,6 +807,7 @@ def capture_phone_screenshot() -> str:
                                  capture_output=True, timeout=8)
             if res.returncode == 0 and len(res.stdout) > 1000:
                 out_file.write_bytes(res.stdout)
+                _prune_screen_captures(max_keep=5)
                 return str(out_file)
         except Exception:
             pass
